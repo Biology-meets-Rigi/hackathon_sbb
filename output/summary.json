@@ -1,31 +1,219 @@
 {
+  "generation": 10,
+  "backend": "prodsys",
+  "horizon_hours": 336.0,
   "best_schedule": {
-    "Weggis_Kai": 10.79498663641922,
-    "Luzern_kai": 61.291806066974154,
-    "Luzern_Weiche_1": 62.19040247563628,
-    "Luzern_Weiche_2": 35.197181169609934,
-    "K\u00fcsnacht_Weiche_1": 44.852274104251045,
-    "Br\u00fccke_Luzern_K\u00fc": 156.0,
-    "Weggis_KS": 108.86994472142771,
-    "K\u00fc_KS": 102.33400895205402,
-    "AG_K\u00fc_Weiche_1": 28.751292897280294,
-    "AG_K\u00fc_Weiche_2": 122.49330205565866,
-    "AG_K\u00fc_Weiche_3": 27.45161895200397,
-    "AG_Ri_Tunnel1": 63.74851421528483,
-    "AG_Ri_Tunnel2": 160.0,
-    "AG_Ri_Weiche1": 107.5199596554876,
-    "Ri_Wegg_Seilen": 93.56755695414057,
-    "Ri_Wegg_Kabine": 115.01519416629894
+    "Weggis_Kai": 21.393587612210503,
+    "Luzern_kai": 311.9672069429778,
+    "Luzern_Weiche_1": 169.3464927789047,
+    "Luzern_Weiche_2": 56.78681794856567,
+    "K\u00fcsnacht_Weiche_1": 9.902706724952196,
+    "Br\u00fccke_Luzern_K\u00fc": 335.04814967787894,
+    "Weggis_KS": 229.2796685334,
+    "K\u00fc_KS": 333.38392849928493,
+    "AG_K\u00fc_Weiche_1": 175.59345226640903,
+    "AG_K\u00fc_Weiche_2": 31.501548128046693,
+    "AG_K\u00fc_Weiche_3": 30.18230050157272,
+    "Br\u00fccke_Luzern_K\u00fc_2": 326.929230623213,
+    "AG_Ri_Tunnel1": 37.240899205578344,
+    "AG_Ri_Tunnel2": 39.35453237429836,
+    "AG_Ri_Weiche1": 27.635344932470616,
+    "Ri_Wegg_Seilen": 330.20074995749565,
+    "Ri_Wegg_Kabine": 8.221506176621393
   },
+  "deferred_assets": [
+    "Br\u00fccke_Luzern_K\u00fc",
+    "Br\u00fccke_Luzern_K\u00fc_2",
+    "K\u00fc_KS",
+    "Ri_Wegg_Seilen"
+  ],
   "objectives": {
-    "served_adjusted": 13248.0,
-    "avg_condition": 0.9638826242562102,
-    "avg_travel_time": 0.17673238590436482,
-    "total_cost": 34480000.0
+    "served_adjusted": 92590.0,
+    "avg_condition": 0.7644739134515773,
+    "avg_travel_time": 0.8085711239795842,
+    "total_cost": 10450000.0
   },
   "notes": [
     "Objectives are true multi-objective (NSGA-II): maximize served, condition; minimize travel time, cost.",
-    "Edge capacity modeled via simpy.Resource; maintenance reduces capacity & increases travel time.",
-    "Asset condition degrades with time and usage (usage_degradation_per_passage)."
-  ]
+    "Simulation backend: prodsys (stations = production resources, lines = link transport processes with vehicles, passengers = products in groups).",
+    "Maintenance withdraws vehicles of the line (capacity) and slows it down; passengers choose the fastest route variant at departure.",
+    "Asset condition degrades with time; maintenance renews it (asset layer, src/assets.py).",
+    "start_hour is in hours since horizon start; jobs not finishing within the horizon are deferred."
+  ],
+  "details": {
+    "backend": "prodsys",
+    "group_size": 10,
+    "lines": {
+      "W_L_S": {
+        "mode": "Schiff",
+        "stations": [
+          "Weggis",
+          "Luzern"
+        ],
+        "vehicles_day": 4,
+        "vehicles_night": 2,
+        "seats_per_vehicle": 30,
+        "driving_share_pct": 44.83924405038937,
+        "maintenance_hours": 48.0
+      },
+      "L_K_Z": {
+        "mode": "Zug",
+        "stations": [
+          "Luzern",
+          "K\u00fcsnacht_am_Rigi"
+        ],
+        "vehicles_day": 4,
+        "vehicles_night": 2,
+        "seats_per_vehicle": 60,
+        "driving_share_pct": 45.54932738889093,
+        "maintenance_hours": 48.0
+      },
+      "K_A_Z": {
+        "mode": "Zug",
+        "stations": [
+          "K\u00fcsnacht_am_Rigi",
+          "Arth_Goldau"
+        ],
+        "vehicles_day": 4,
+        "vehicles_night": 2,
+        "seats_per_vehicle": 30,
+        "driving_share_pct": 49.13973406605324,
+        "maintenance_hours": 72.0
+      },
+      "R_A_Z": {
+        "mode": "Zug",
+        "stations": [
+          "Rigi",
+          "Arth_Goldau"
+        ],
+        "vehicles_day": 4,
+        "vehicles_night": 1,
+        "seats_per_vehicle": 10,
+        "driving_share_pct": 23.061670695547623,
+        "maintenance_hours": 107.71918744182773
+      },
+      "W_R_L": {
+        "mode": "Luftseilbahn",
+        "stations": [
+          "Weggis",
+          "Rigi"
+        ],
+        "vehicles_day": 4,
+        "vehicles_night": 1,
+        "seats_per_vehicle": 20,
+        "driving_share_pct": 33.38244466953612,
+        "maintenance_hours": 12.0
+      },
+      "W_K_B": {
+        "mode": "Bus",
+        "stations": [
+          "Weggis",
+          "K\u00fcsnacht_am_Rigi"
+        ],
+        "vehicles_day": 4,
+        "vehicles_night": 2,
+        "seats_per_vehicle": 10,
+        "driving_share_pct": 55.34832390141307,
+        "maintenance_hours": 12.0
+      }
+    },
+    "routes": {
+      "Arth_Goldau > Rigi": {
+        "avg_travel_min": 56.683562083608344,
+        "variants": [
+          {
+            "via": "Arth_Goldau > Rigi",
+            "passengers": 4990,
+            "share": 0.8990990990990991,
+            "avg_travel_min": 49.35412405951053
+          },
+          {
+            "via": "Arth_Goldau > K\u00fcsnacht_am_Rigi > Weggis > Rigi",
+            "passengers": 560,
+            "share": 0.1009009009009009,
+            "avg_travel_min": 121.99409019119415
+          }
+        ]
+      },
+      "K\u00fcsnacht_am_Rigi > Arth_Goldau": {
+        "avg_travel_min": 66.07714301098306,
+        "variants": [
+          {
+            "via": "K\u00fcsnacht_am_Rigi > Arth_Goldau",
+            "passengers": 19380,
+            "share": 1.0,
+            "avg_travel_min": 66.07714301098306
+          }
+        ]
+      },
+      "Luzern > K\u00fcsnacht_am_Rigi": {
+        "avg_travel_min": 63.37816496672266,
+        "variants": [
+          {
+            "via": "Luzern > K\u00fcsnacht_am_Rigi",
+            "passengers": 12800,
+            "share": 0.512615138165799,
+            "avg_travel_min": 70.17752876172432
+          },
+          {
+            "via": "Luzern > Weggis > K\u00fcsnacht_am_Rigi",
+            "passengers": 12170,
+            "share": 0.48738486183420104,
+            "avg_travel_min": 56.23799493384498
+          }
+        ]
+      },
+      "Weggis > K\u00fcsnacht_am_Rigi": {
+        "avg_travel_min": 37.564874377554766,
+        "variants": [
+          {
+            "via": "Weggis > K\u00fcsnacht_am_Rigi",
+            "passengers": 7140,
+            "share": 0.9754098360655737,
+            "avg_travel_min": 35.82492948091809
+          },
+          {
+            "via": "Weggis > Luzern > K\u00fcsnacht_am_Rigi",
+            "passengers": 180,
+            "share": 0.02459016393442623,
+            "avg_travel_min": 106.58268861080994
+          }
+        ]
+      },
+      "Weggis > Luzern": {
+        "avg_travel_min": 26.386174000659885,
+        "variants": [
+          {
+            "via": "Weggis > Luzern",
+            "passengers": 27160,
+            "share": 1.0,
+            "avg_travel_min": 26.386174000659885
+          }
+        ]
+      },
+      "Weggis > Rigi": {
+        "avg_travel_min": 39.35195323584419,
+        "variants": [
+          {
+            "via": "Weggis > Rigi",
+            "passengers": 8210,
+            "share": 0.9939467312348669,
+            "avg_travel_min": 38.88568570837478
+          },
+          {
+            "via": "Weggis > K\u00fcsnacht_am_Rigi > Arth_Goldau > Rigi",
+            "passengers": 50,
+            "share": 0.006053268765133172,
+            "avg_travel_min": 115.91308124632175
+          }
+        ]
+      }
+    },
+    "transfers_per_station": {
+      "K\u00fcsnacht_am_Rigi": 610,
+      "Weggis": 12730,
+      "Luzern": 180,
+      "Arth_Goldau": 50
+    }
+  }
 }
