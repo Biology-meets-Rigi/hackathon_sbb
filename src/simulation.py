@@ -338,13 +338,17 @@ class NetworkSimulator:
         self.served_trips += 1
 
     def _passenger_source(self, flow: PassengerFlow) -> Generator[simpy.events.Timeout, None, None]:
-        current_time = float(flow.start_time_hour)
-        while current_time < float(flow.end_time_hour) and current_time < self.horizon_hours:
-            self.env.process(self._passenger_trip(flow, current_time))
-            lam = max(float(flow.rate_per_hour), 1e-6)
-            interarrival = float(self.rng.exponential(1.0 / lam))
-            current_time += interarrival
-            yield self.env.timeout(max(0.0, current_time - self.env.now))
+        # Flow windows are given in hours of a single day (0-24) and repeat every day of the horizon.
+        lam = max(float(flow.rate_per_hour), 1e-6)
+        day_start = 0.0
+        while day_start < self.horizon_hours:
+            current_time = day_start + float(flow.start_time_hour)
+            window_end = min(day_start + float(flow.end_time_hour), self.horizon_hours)
+            while current_time < window_end:
+                yield self.env.timeout(max(0.0, current_time - self.env.now))
+                self.env.process(self._passenger_trip(flow, current_time))
+                current_time += float(self.rng.exponential(1.0 / lam))
+            day_start += 24.0
 
     def run(self) -> SimulationResult:
         for flow in self.flows:
