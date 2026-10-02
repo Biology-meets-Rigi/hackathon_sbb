@@ -48,6 +48,10 @@ prodsys wird nicht verändert; das Backend hängt sich nach `Runner.initialize_s
   Ende (über `router.free_resources`).
 - **Langsamfahrt:** die Fahrzeit jedes Abschnitts wird mit dem Langsamfahrfaktor der Strecke
   multipliziert (Wrapper um das Zeitmodell jedes Fahrzeugs).
+- **Disposition:** eigene Routing-Heuristik (`product_factory.routing_heuristic_override`): freies
+  Fahrzeug zuerst, sonst zu einem Fahrzeug mit wartenden Fahrgästen derselben Relation zusteigen
+  (Sammelfahrt), sonst kürzeste Warteschlange. prodsys' eigene Heuristiken verteilen Transporte
+  zufällig, dann entstehen keine Sammelfahrten.
 
 ## Bewusste Einschränkungen
 
@@ -70,6 +74,6 @@ prodsys wird nicht verändert; das Backend hängt sich nach `Runner.initialize_s
 | 1 | Abhängigkeiten, Anlagen-Schicht mit Tests, diese Doku | erledigt |
 | 2 | Netz-Builder und Basislauf (direkte Routen) | erledigt |
 | 3 | Kopplung Anlagen ↔ prodsys (Kapazität Tag/Nacht/Baustelle, Langsamfahrt) | erledigt |
-| 4 | Umsteigen und Umrouten (Routenvarianten) | offen |
+| 4 | Umsteigen und Umrouten (Routenvarianten), Fahrzeugdisposition | erledigt |
 | 5 | GA-Anbindung (Backend-Schalter, prodsys-Kennzahlen) | offen |
 | 6 | Frontend | offen |
