@@ -17,10 +17,11 @@ BACKEND_NOTES = {
         "Maintenance reduces edge capacity & increases travel time.",
     ],
     "prodsys": [
-        "Simulation backend: prodsys (stations = production resources, lines = link transport processes "
-        "with vehicles, passengers = products in groups).",
-        "Maintenance withdraws vehicles of the line (capacity) and slows it down; passengers choose the "
-        "fastest route variant at departure.",
+        "Simulation backend: prodsys (stations = production resources, vehicles = transport resources running "
+        "the timetable blocks, passengers = products in groups).",
+        "Works reduce the track capacity of a section (vehicles at the same time) and slow it down; the "
+        "construction timetable delays, reroutes or cancels trips; passengers choose the route with the "
+        "earliest arrival in the operated timetable.",
     ],
 }
 
@@ -47,6 +48,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workers", type=int, default=0, help="Parallel simulations (0 = all CPU cores, 1 = sequential)")
     parser.add_argument("--backend", choices=BACKENDS, default="prodsys", help="Simulation backend")
     parser.add_argument("--group-size", type=int, default=10, help="prodsys backend: passengers per simulated product")
+    parser.add_argument("--gtfs", default=None, help="prodsys backend: GTFS timetable directory (default data/gtfs)")
+    parser.add_argument("--timetable-start", default=None, help="prodsys backend: first simulated service day YYYYMMDD")
     parser.add_argument("--output", default="output/best_schedule.csv", help="Output csv for best schedule")
     parser.add_argument("--pareto_out", default="output/pareto_front.csv", help="Output csv for Pareto front")
     return parser.parse_args()
@@ -124,6 +127,8 @@ def main() -> None:
         workers=args.workers,
         backend=args.backend,
         group_size=args.group_size,
+        gtfs_dir=args.gtfs,
+        timetable_start_date=args.timetable_start,
     )
 
     # Write summary.json after each generation
@@ -152,13 +157,13 @@ def main() -> None:
     )
     if config.backend == "prodsys":
         # Re-run the chosen schedule (same seed as in the GA) for detailed prodsys KPIs
+        from ga import rail_model_config
         from rail_prodsys.backend import run_prodsys
         from rail_prodsys.details import collect_details
-        from rail_prodsys.network import RailModelConfig
 
         run = run_prodsys(
             nodes, edges, assets, flows, best_schedule, np.random.default_rng(config.seed),
-            config.horizon_hours, RailModelConfig(group_size=config.group_size),
+            config.horizon_hours, rail_model_config(config.group_size, config.gtfs_dir, config.timetable_start_date),
         )
         final_summary["details"] = collect_details(run)
     save_schedule(args.output, best_schedule, final_summary["deferred_assets"])

@@ -34,6 +34,9 @@ class GAConfig:
     backend: str = "prodsys"
     # prodsys backend: passengers per simulated product (larger = faster, coarser)
     group_size: int = 10
+    # prodsys backend: GTFS timetable directory (None = data/gtfs) and first simulated day (YYYYMMDD)
+    gtfs_dir: Optional[str] = None
+    timetable_start_date: Optional[str] = None
 
 
 BACKENDS = ("prodsys", "simpy")
@@ -43,7 +46,16 @@ _WORKER: Dict[str, object] = {}
 
 
 def _init_worker(
-    nodes, edges, assets, flows, horizon_hours: float, seed: int, backend: str = "simpy", group_size: int = 10
+    nodes,
+    edges,
+    assets,
+    flows,
+    horizon_hours: float,
+    seed: int,
+    backend: str = "simpy",
+    group_size: int = 10,
+    gtfs_dir: Optional[str] = None,
+    timetable_start_date: Optional[str] = None,
 ) -> None:
     if backend not in BACKENDS:
         raise ValueError(f"unknown backend {backend!r}, expected one of {BACKENDS}")
@@ -56,7 +68,19 @@ def _init_worker(
         seed=seed,
         backend=backend,
         group_size=group_size,
+        gtfs_dir=gtfs_dir,
+        timetable_start_date=timetable_start_date,
     )
+
+
+def rail_model_config(group_size: int, gtfs_dir: Optional[str] = None, timetable_start_date: Optional[str] = None):
+    """prodsys backend settings (imported lazily: prodsys is heavy)."""
+    from rail_prodsys.network import RailModelConfig
+
+    config = RailModelConfig(group_size=group_size, timetable_start_date=timetable_start_date)
+    if gtfs_dir:
+        config.gtfs_dir = gtfs_dir
+    return config
 
 
 def _simulate(schedule: Dict[str, float]) -> Tuple[SimulationResult, float]:
@@ -67,9 +91,9 @@ def _simulate(schedule: Dict[str, float]) -> Tuple[SimulationResult, float]:
     args = (_WORKER["nodes"], _WORKER["edges"], _WORKER["assets"], _WORKER["flows"], schedule, rng, _WORKER["horizon_hours"])
     if _WORKER["backend"] == "prodsys":
         from rail_prodsys.backend import simulate_schedule_prodsys  # imported lazily: prodsys is heavy
-        from rail_prodsys.network import RailModelConfig
 
-        result = simulate_schedule_prodsys(*args, config=RailModelConfig(group_size=_WORKER["group_size"]))
+        rail_config = rail_model_config(_WORKER["group_size"], _WORKER["gtfs_dir"], _WORKER["timetable_start_date"])
+        result = simulate_schedule_prodsys(*args, config=rail_config)
     else:
         result = simulate_schedule(*args)
     return result, time.perf_counter() - t0
@@ -106,7 +130,8 @@ class NSGA2Optimizer:
         self.eval_counter = 0
 
         self._worker_args = (
-            nodes, edges, assets, flows_day, config.horizon_hours, self.base_seed, config.backend, config.group_size
+            nodes, edges, assets, flows_day, config.horizon_hours, self.base_seed, config.backend, config.group_size,
+            config.gtfs_dir, config.timetable_start_date,
         )
         _init_worker(*self._worker_args)
         self._pool: Optional[Pool] = None
