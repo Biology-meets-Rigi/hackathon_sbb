@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=45, help="Random seed")
     parser.add_argument("--cx", type=float, default=0.3, help="Crossover")
     parser.add_argument("--mut", type=float, default=0.1, help="Mutation")
+    parser.add_argument("--workers", type=int, default=0, help="Parallel simulations (0 = all CPU cores, 1 = sequential)")
     parser.add_argument("--output", default="output/best_schedule.csv", help="Output csv for best schedule")
     parser.add_argument("--pareto_out", default="output/pareto_front.csv", help="Output csv for Pareto front")
     return parser.parse_args()
@@ -102,6 +103,7 @@ def main() -> None:
         horizon_hours=args.horizon,
         seed=args.seed,
         selection_weights=tuple(args.weights),
+        workers=args.workers,
     )
 
     # Write summary.json after each generation

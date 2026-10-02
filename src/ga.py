@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import random
 from dataclasses import dataclass
+from multiprocessing import Pool
 from typing import Dict, List, Tuple, Callable, Optional
 
 import numpy as np
@@ -26,6 +28,33 @@ class GAConfig:
     seed: int = 42
     # Weights (condition, travel time, cost) for picking the compromise solution from the Pareto front
     selection_weights: Tuple[float, float, float] = (0.3, 0.4, 0.3)
+    # Parallel simulations: 0 = all CPU cores, 1 = sequential in this process
+    workers: int = 0
+
+
+# Simulation inputs per process (set by _init_worker in the main process and in every pool worker)
+_WORKER: Dict[str, object] = {}
+
+
+def _init_worker(nodes, edges, assets, flows, horizon_hours: float, seed: int) -> None:
+    _WORKER.update(nodes=nodes, edges=edges, assets=assets, flows=flows, horizon_hours=horizon_hours, seed=seed)
+
+
+def _simulate(schedule: Dict[str, float]) -> Tuple[SimulationResult, float]:
+    t0 = time.perf_counter()
+    # Common Random Numbers: every schedule sees the same passenger demand realization,
+    # so objective differences come from the schedule and not from sampling noise.
+    rng = np.random.default_rng(_WORKER["seed"])
+    result = simulate_schedule(
+        _WORKER["nodes"],
+        _WORKER["edges"],
+        _WORKER["assets"],
+        _WORKER["flows"],
+        schedule,
+        rng,
+        _WORKER["horizon_hours"],
+    )
+    return result, time.perf_counter() - t0
 
 
 class NSGA2Optimizer:
@@ -57,6 +86,10 @@ class NSGA2Optimizer:
         random.seed(config.seed)
         self.base_seed = int(config.seed)
         self.eval_counter = 0
+
+        self._worker_args = (nodes, edges, assets, flows_day, config.horizon_hours, self.base_seed)
+        _init_worker(*self._worker_args)
+        self._pool: Optional[Pool] = None
 
         self.toolbox = base.Toolbox()
         self._setup_deap()
@@ -107,7 +140,6 @@ class NSGA2Optimizer:
         self.toolbox.register("select", tools.selNSGA2)
         # Parent selection: binary tournament on dominance, ties broken by crowding distance
         self.toolbox.register("select_parents", tools.selTournamentDCD)
-        self.toolbox.register("evaluate", self._evaluate)
 
     def _random_start(self) -> float:
         return random.uniform(0.0, self.config.horizon_hours)
@@ -118,27 +150,21 @@ class NSGA2Optimizer:
         for i in range(len(individual)):
             individual[i] = max(0.0, min(self.config.horizon_hours, float(individual[i])))
 
-    def _evaluate(self, individual: List[float]):
-        t0 = time.perf_counter()
+    def _evaluate_all(self, individuals: List) -> None:
+        """Simulate all individuals (in parallel if a worker pool is active) and set their fitness."""
+        schedules = []
+        for ind in individuals:
+            self._bounds_correction(ind)
+            schedules.append({asset_id: float(ind[i]) for i, asset_id in enumerate(self.asset_ids)})
+        if self._pool is not None:
+            results = self._pool.map(_simulate, schedules)
+        else:
+            results = [_simulate(s) for s in schedules]
+        for ind, (result, dt) in zip(individuals, results):
+            ind.fitness.values = self._objectives(result, dt)
 
-        self._bounds_correction(individual)
-
-        schedule = {asset_id: float(individual[i]) for i, asset_id in enumerate(self.asset_ids)}
-
-        # Common Random Numbers: every schedule sees the same passenger demand realization,
-        # so objective differences come from the schedule and not from sampling noise.
+    def _objectives(self, result: SimulationResult, dt: float) -> tuple:
         self.eval_counter += 1
-        rng = np.random.default_rng(self.base_seed)
-
-        result: SimulationResult = simulate_schedule(
-            self.nodes,
-            self.edges,
-            self.assets,
-            self.flows_day,
-            schedule,
-            rng,
-            self.config.horizon_hours,
-        )
 
         # Objectives:
         # - maximize served trips
@@ -151,7 +177,6 @@ class NSGA2Optimizer:
         # If you prefer hard service-level constraints, do that after Pareto filtering.
         served_adjusted = served #- 2.0 * float(result.failed_trips)
 
-        dt = time.perf_counter() - t0
         if self.eval_counter % 50 == 0:  # alle 50 Evaluations
             self.logger.info(
                 "Eval %d | served=%d failed=%d avg_time=%.3f avg_cond=%.3f cost=%.1f | sim=%.2fs",
@@ -198,11 +223,21 @@ class NSGA2Optimizer:
     def run(self, progress_cb: Optional[Callable[[int, Dict[str, float], tuple, tools.ParetoFront], None]] = None):
         self._progress_cb = progress_cb
 
+        workers = min(self.config.workers or os.cpu_count() or 1, self.config.population_size)
+        if workers <= 1:
+            return self._run()
+        with Pool(workers, initializer=_init_worker, initargs=self._worker_args) as pool:
+            self._pool = pool
+            try:
+                return self._run()
+            finally:
+                self._pool = None
+
+    def _run(self):
         pop = self.toolbox.population(n=self.config.population_size)
 
         # Evaluate initial population
-        for ind in pop:
-            ind.fitness.values = self.toolbox.evaluate(ind)
+        self._evaluate_all(pop)
 
         # NSGA-II requires initial sorting
         pop = self.toolbox.select(pop, len(pop))
@@ -234,8 +269,7 @@ class NSGA2Optimizer:
                     del mutant.fitness.values
 
             invalid = [ind for ind in offspring if not ind.fitness.valid]
-            for ind in invalid:
-                ind.fitness.values = self.toolbox.evaluate(ind)
+            self._evaluate_all(invalid)
             whole = pop + offspring
             # print(len(whole))
             # print()
