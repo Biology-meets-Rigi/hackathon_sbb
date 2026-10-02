@@ -28,7 +28,7 @@ class Asset:
     asset_id: str
     edge_id: str
     asset_type: str
-    condition_initial: float
+    condition_initial: float                  # score 0..1 (1 = new), converted from the condition class
     condition_transition_rate: float          # time-based degradation per day
     maintenance_cost_per_unit: float
     maintenance_duration_half_days: float
@@ -56,6 +56,20 @@ class SimulationResult:
     failed_trips: int
     total_cost: float
     schedule: Dict[str, float]
+
+
+CONDITION_CLASS_BEST = 1   # gut / neuwertig
+CONDITION_CLASS_WORST = 5  # schlecht / alarmierend
+
+
+def condition_class_to_score(condition_class: float) -> float:
+    """Map a condition class (1 = good ... 5 = bad) to the simulation score (1.0 ... 0.2)."""
+    c = float(condition_class)
+    if not CONDITION_CLASS_BEST <= c <= CONDITION_CLASS_WORST:
+        raise ValueError(
+            f"condition class {c} outside {CONDITION_CLASS_BEST}..{CONDITION_CLASS_WORST}"
+        )
+    return 1.0 - (c - CONDITION_CLASS_BEST) * 0.2
 
 
 def load_nodes(path: str) -> Dict[str, Node]:
@@ -96,7 +110,7 @@ def load_assets(path: str) -> Dict[str, Asset]:
             asset_id=str(row["asset_id"]),
             edge_id=str(row["edge_id"]),
             asset_type=str(row["asset_type"]),
-            condition_initial=float(row["condition_initial"]),
+            condition_initial=condition_class_to_score(row["condition_initial"]),
             condition_transition_rate=float(row["condition_transition_rate"]),
             location_x=float(row["location_x"]),
             location_y=float(row["location_y"]),
