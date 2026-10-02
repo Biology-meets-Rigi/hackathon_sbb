@@ -1,5 +1,7 @@
 simpy==4.1.1
-pandas==2.2.3
-numpy==2.1.3
-deap==1.4.1
+pandas==3.0.6
+numpy==1.26.4  # prodsys requires numpy<2
+deap==1.4.4
 openpyxl==3.1.5
+# Pinned exactly: the prodsys backend hooks into prodsys runtime internals (router, sources, transport states)
+prodsys==1.2.3
