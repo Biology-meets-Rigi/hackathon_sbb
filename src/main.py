@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         nargs=3,
         default=(0.3, 0.4, 0.3),
-        help="Weights for condition, travel time, cost (sum=1)",
+        help="Weights for condition, travel time, cost (sum=1) used to pick the compromise from the Pareto front",
     )
     parser.add_argument("--horizon", type=float, default=168.0, help="Simulation horizon in hours")
     parser.add_argument("--population", type=int, default=4, help="NSGA-II population size")
@@ -101,6 +101,7 @@ def main() -> None:
         mutation_prob=args.mut,
         horizon_hours=args.horizon,
         seed=args.seed,
+        selection_weights=tuple(args.weights),
     )
 
     # Write summary.json after each generation

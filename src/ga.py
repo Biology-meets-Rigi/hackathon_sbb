@@ -24,6 +24,8 @@ class GAConfig:
     mutation_prob: float = 0.1
     horizon_hours: float = 60 * 24.0
     seed: int = 42
+    # Weights (condition, travel time, cost) for picking the compromise solution from the Pareto front
+    selection_weights: Tuple[float, float, float] = (0.3, 0.4, 0.3)
 
 
 class NSGA2Optimizer:
@@ -170,12 +172,16 @@ class NSGA2Optimizer:
             float(result.total_cost),
         )
 
-    @staticmethod
-    def _choose_solution_from_pareto(pareto: List, eps: float = 1e-9):
+    def _choose_solution_from_pareto(self, pareto: List, eps: float = 1e-9):
         """
-        Choose a single solution from Pareto set using normalized distance to ideal point:
+        Choose a single solution from Pareto set using weighted normalized distance to ideal point:
         ideal = (max served, max cond, min time, min cost)
+        Weights come from config.selection_weights = (condition, travel time, cost). Served trips are
+        nearly constant (only trips still underway at the horizon end differ), so they get weight 0 here.
         """
+        w_cond, w_time, w_cost = self.config.selection_weights
+        w = np.array([0.0, w_cond, w_time, w_cost], dtype=float)
+
         fits = np.array([ind.fitness.values for ind in pareto], dtype=float)
         ideal = np.array([fits[:, 0].max(), fits[:, 1].max(), fits[:, 2].min(), fits[:, 3].min()], dtype=float)
 
@@ -186,7 +192,7 @@ class NSGA2Optimizer:
         norm = (fits - mins) / denom
 
         ideal_norm = (ideal - mins) / denom
-        d = np.linalg.norm(norm - ideal_norm, axis=1)
+        d = np.sqrt((w * (norm - ideal_norm) ** 2).sum(axis=1))
         return pareto[int(np.argmin(d))]
 
     def run(self, progress_cb: Optional[Callable[[int, Dict[str, float], tuple, tools.ParetoFront], None]] = None):
