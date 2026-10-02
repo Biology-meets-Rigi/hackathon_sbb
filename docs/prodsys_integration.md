@@ -53,6 +53,26 @@ prodsys wird nicht verändert; das Backend hängt sich nach `Runner.initialize_s
   (Sammelfahrt), sonst kürzeste Warteschlange. prodsys' eigene Heuristiken verteilen Transporte
   zufällig, dann entstehen keine Sammelfahrten.
 
+## Bedienung
+
+```bash
+# GA mit prodsys-Backend (Default), Horizont in Stunden
+python src/main.py --horizon 168 --population 24 --generations 10 --cx 0.6 --mut 0.3
+# Referenz mit der eigenen SimPy-Simulation
+python src/main.py --backend simpy --horizon 168 --population 24 --generations 10
+# Tests
+python -m pytest tests
+```
+
+- `--group-size` (Default 10): Personen pro simuliertem Produkt. Kleiner = feiner, aber langsamer
+  (Laufzeit wächst etwa linear mit der Zahl der Produkte).
+- `output/summary.json` enthält beim prodsys-Backend zusätzlich `details` für den gewählten Plan:
+  je Linie Fahrzeuge, Plätze, Fahrzeit-Anteil der Fahrzeuge und Baustellenstunden; je Relation
+  mittlere Reisezeit und Anteile der Routenvarianten; Umsteiger je Bahnhof.
+
+Laufzeit (14 Kerne, Gruppen à 10): eine Bewertung über 7 Tage dauert etwa 10 s, davon etwa 2.7 s
+Initialisierung von prodsys (Vorberechnung aller Transportrouten bei jedem Lauf).
+
 ## Bewusste Einschränkungen
 
 - prodsys disponiert Fahrzeuge auf Abruf (wie Taxis), nicht nach Fahrplan. Die Wartezeit auf ein
@@ -63,7 +83,12 @@ prodsys wird nicht verändert; das Backend hängt sich nach `Runner.initialize_s
   Fahrzeug sofort an, auch mitten auf der Fahrt mit Fahrgästen.
 - Die Optimierer von prodsys werden nicht verwendet: Sie optimieren nur die Systemkonfiguration
   (Maschinen, Layout, Steuerung) und erlauben keine eigenen Entscheidungsvariablen oder Ziele.
+- Routenvarianten werden nach Grundzeiten vorausgewählt (höchstens 3, höchstens 3× so lang wie die
+  schnellste). Eine Relation ohne zugelassene Umfahrung (z. B. Küsnacht → Arth-Goldau) kann bei
+  einer langen Baustelle stark überlastet werden; `max_detour_factor` erhöht die Auswahl.
 - prodsys ist auf `1.2.3` gepinnt, weil das Backend Laufzeit-Interna nutzt.
+- prodsys iteriert intern über `set`s; damit Läufe in allen GA-Worker-Prozessen gleich ausfallen,
+  bricht die Dispositions-Heuristik Gleichstände über die Fahrzeug-ID (Test vorhanden).
 - Unter Windows muss der Pfad zur venv kurz genug sein (MAX_PATH 260), sonst schlägt der Import
   von prodsys mit `ModuleNotFoundError` fehl.
 
@@ -75,5 +100,5 @@ prodsys wird nicht verändert; das Backend hängt sich nach `Runner.initialize_s
 | 2 | Netz-Builder und Basislauf (direkte Routen) | erledigt |
 | 3 | Kopplung Anlagen ↔ prodsys (Kapazität Tag/Nacht/Baustelle, Langsamfahrt) | erledigt |
 | 4 | Umsteigen und Umrouten (Routenvarianten), Fahrzeugdisposition | erledigt |
-| 5 | GA-Anbindung (Backend-Schalter, prodsys-Kennzahlen) | offen |
+| 5 | GA-Anbindung (Backend-Schalter, prodsys-Kennzahlen) | erledigt |
 | 6 | Frontend | offen |
