@@ -60,7 +60,10 @@ prodsys wird nicht verändert; das Backend hängt sich nach `Runner.initialize_s
 python src/main.py --horizon 168 --population 24 --generations 10 --cx 0.6 --mut 0.3
 # Referenz mit der eigenen SimPy-Simulation
 python src/main.py --backend simpy --horizon 168 --population 24 --generations 10
+# Frontend (Backend-Auswahl in der Seitenleiste, Details zum gezeigten Plan)
+streamlit run src/frontend.py
 # Tests
+pip install -r requirements-dev.txt
 python -m pytest tests
 ```
 
@@ -101,4 +104,4 @@ Initialisierung von prodsys (Vorberechnung aller Transportrouten bei jedem Lauf)
 | 3 | Kopplung Anlagen ↔ prodsys (Kapazität Tag/Nacht/Baustelle, Langsamfahrt) | erledigt |
 | 4 | Umsteigen und Umrouten (Routenvarianten), Fahrzeugdisposition | erledigt |
 | 5 | GA-Anbindung (Backend-Schalter, prodsys-Kennzahlen) | erledigt |
-| 6 | Frontend | offen |
+| 6 | Frontend: Backend-Auswahl, Linien- und Routendetails, plotly 7 | erledigt |
