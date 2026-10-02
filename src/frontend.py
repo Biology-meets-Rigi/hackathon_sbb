@@ -324,7 +324,17 @@ with st.sidebar:
         weights = (w1 / _total_w, w2 / _total_w, w3 / _total_w)
     # st.write(f"Normalized weights: {weights[0]:.2f}, {weights[1]:.2f}, {weights[2]:.2f}")
 
-    horizon = st.slider("Observation period (Days)", 1.0, 200.0, 60.0, 1.0)
+    backend = st.selectbox(
+        "Simulation backend",
+        ["prodsys", "simpy"],
+        help="prodsys: stations, lines and vehicles as a prodsys production system. simpy: own, faster model.",
+    )
+    group_size = st.number_input(
+        "Passengers per simulated group (prodsys)", min_value=1, max_value=50, value=10, step=1,
+        disabled=backend != "prodsys",
+    )
+    # prodsys needs ~10 s per evaluated plan and simulated week, so the default horizon is two weeks
+    horizon = st.slider("Observation period (Days)", 1.0, 200.0, 14.0, 1.0)
     population = st.slider("Population", 4, 200, 24, 4)
     cx = st.slider("Crossover", 0.0, 1.0, 0.6, 0.01)
     mut = st.slider("Mutation", 0.0, 1.0, 0.3, 0.01)
@@ -350,7 +360,7 @@ else:
         import datetime
 
         lm = datetime.datetime.fromtimestamp(mtime).isoformat()
-        st.sidebar.write(f"Loaded summary.json ({lm})")
+        st.sidebar.write(f"Loaded summary.json ({lm}, backend: {best_result.get('backend', 'unknown')})")
     except Exception:
         pass
         st.sidebar.write("Loaded summary.json")
@@ -1109,6 +1119,67 @@ with col_left:
     st.dataframe(df_display, height=250)
 
 
+# ---- prodsys details for the shown schedule: lines, route choice, transfers ----
+details = best_result.get("details") if isinstance(best_result, dict) else None
+if isinstance(details, dict) and details.get("backend") == "prodsys":
+    st.markdown("## prodsys: lines and routes")
+    st.caption(
+        f"Simulated with prodsys, passengers in groups of {details.get('group_size')}. "
+        "Driving share = time the line's vehicles are driving (loaded or empty to the next pick-up)."
+    )
+    line_rows = [
+        {
+            "Line": line_id,
+            "Mode": line.get("mode"),
+            "Stations": " - ".join(line.get("stations", [])),
+            "Vehicles day/night": f"{line.get('vehicles_day')}/{line.get('vehicles_night')}",
+            "Seats per vehicle": line.get("seats_per_vehicle"),
+            "Driving share %": round(float(line.get("driving_share_pct", 0.0)), 1),
+            "Works (h)": round(float(line.get("maintenance_hours", 0.0)), 1),
+        }
+        for line_id, line in details.get("lines", {}).items()
+    ]
+    col_lines, col_util = st.columns([3, 2], gap="large")
+    with col_lines:
+        st.dataframe(pd.DataFrame(line_rows), hide_index=True, width="stretch")
+    with col_util:
+        fig_util = go.Figure(
+            go.Bar(
+                x=[r["Line"] for r in line_rows],
+                y=[r["Driving share %"] for r in line_rows],
+                marker_color=[edge_color_by_edge_id.get(r["Line"], "#28a745") for r in line_rows],
+                text=[f"{r['Driving share %']:.0f}%" for r in line_rows],
+                textposition="auto",
+                hovertemplate="%{x}: %{y:.1f}% driving<extra></extra>",
+            )
+        )
+        fig_util.update_layout(
+            height=260,
+            margin={"l": 20, "r": 20, "t": 30, "b": 20},
+            yaxis=dict(range=[0, 100], title_text="Driving share %"),
+            title_text="Vehicle driving share per line",
+        )
+        st.plotly_chart(fig_util, width="stretch")
+
+    route_rows = []
+    for relation, route in details.get("routes", {}).items():
+        for variant in route.get("variants", []):
+            avg = variant.get("avg_travel_min")
+            route_rows.append(
+                {
+                    "Relation": relation,
+                    "Route": variant.get("via"),
+                    "Share %": round(100.0 * float(variant.get("share", 0.0)), 1),
+                    "Passengers": variant.get("passengers"),
+                    "Avg travel (min)": round(float(avg), 1) if avg is not None else None,
+                }
+            )
+    st.write("Route choice per relation")
+    st.dataframe(pd.DataFrame(route_rows), hide_index=True, width="stretch")
+    transfers = {k: v for k, v in details.get("transfers_per_station", {}).items() if v}
+    if transfers:
+        st.caption("Transfers per station: " + ", ".join(f"{k}: {v}" for k, v in transfers.items()))
+
 st.markdown("## Mutation example")
 st.write("This demonstrates a random individual (start offsets) before and after applying the same mutation operator used in the GA.")
 
@@ -1287,7 +1358,9 @@ if 'run_now' in globals() and run_now:
            "--population", str(int(population)),
            "--cx", str(float(cx)),
            "--mut", str(float(mut)),
-           "--generations", str(int(generations))]
+           "--generations", str(int(generations)),
+           "--backend", backend,
+           "--group-size", str(int(group_size))]
 
     # Show command for debugging
     st.sidebar.write("Running command:")
