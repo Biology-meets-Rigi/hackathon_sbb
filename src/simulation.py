@@ -154,6 +154,7 @@ class NetworkSimulator:
             night = self._slots(edge.capacity_at_night, edge)
             self.edge_slots[edge_id] = (day, night)
             self.edge_resources[edge_id] = simpy.PriorityResource(self.env, capacity=max(day, night))
+        self.edge_waiting: Dict[str, int] = {edge_id: 0 for edge_id in edges}  # passengers queued per edge
 
         # Condition state
         self.asset_last_maintenance: Dict[str, float] = {k: 0.0 for k in assets}
@@ -277,8 +278,14 @@ class NetworkSimulator:
         return (self.edges[edge_id].base_travel_time_min / 60.0) * slowdown
 
     def _edge_weight_for_routing(self, t: float) -> Dict[str, float]:
-        """Provide time-dependent edge weights to the router."""
-        return {edge_id: self._edge_travel_time(edge_id, t) for edge_id in self.edges}
+        """Expected time per edge for the router: travel time plus estimated wait behind queued passengers."""
+        weights: Dict[str, float] = {}
+        for edge_id in self.edges:
+            travel_time = self._edge_travel_time(edge_id, t)
+            # n queued, S slots each held for travel_time -> wait ~ n * travel_time / S
+            expected_wait = self.edge_waiting[edge_id] * travel_time / self._effective_slots(edge_id, t)
+            weights[edge_id] = travel_time + expected_wait
+        return weights
 
     def _sample_conditions(self) -> Generator[simpy.events.Timeout, None, None]:
         while self.env.now <= self.horizon_hours:
@@ -308,8 +315,10 @@ class NetworkSimulator:
         Traverse an edge under capacity constraints: wait for one free slot, hold it for the travel time.
         Reduced capacity (night, maintenance) is enforced by the edge's capacity controller.
         """
+        self.edge_waiting[edge_id] += 1
         with self.edge_resources[edge_id].request(priority=PASSENGER_PRIORITY) as req:
             yield req
+            self.edge_waiting[edge_id] -= 1
             travel_time = self._edge_travel_time(edge_id, self.env.now)
 
             # Usage degradation
