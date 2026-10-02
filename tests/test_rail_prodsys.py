@@ -144,3 +144,35 @@ def test_dispatch_heuristic_order():
     busy = [_fake_request(v) for v in (other, full_lot, joinable)]
     vehicle_dispatch_heuristic(busy)
     assert busy[0].resource.name == "joinable"
+
+
+_REPRO_SCRIPT = """
+import sys
+sys.path.insert(0, "src")
+import numpy as np
+from data_models import load_assets, load_edges, load_nodes, load_passenger_flows
+from rail_prodsys.backend import simulate_schedule_prodsys
+n = load_nodes("data/nodes_template.csv"); e = load_edges("data/edges_template.csv")
+a = load_assets("data/assets_template.csv"); f = load_passenger_flows("data/passenger_flows_day.csv")
+r = simulate_schedule_prodsys(n, e, a, f, {"Luzern_Weiche_1": 1.0}, np.random.default_rng(7), 14.0)
+print(repr((r.served_trips, r.avg_travel_time)))
+"""
+
+
+def test_reproducible_across_processes():
+    """GA workers are separate processes with their own string hash seed; results must not depend on it."""
+    import os
+    import subprocess
+    import sys
+
+    from conftest import ROOT
+
+    outputs = set()
+    for hash_seed in ("1", "2"):
+        env = dict(os.environ, PYTHONHASHSEED=hash_seed, PYTHONDONTWRITEBYTECODE="1")
+        proc = subprocess.run(
+            [sys.executable, "-c", _REPRO_SCRIPT], cwd=ROOT, env=env, capture_output=True, text=True, check=True
+        )
+        outputs.add(proc.stdout.strip())
+    assert len(outputs) == 1, outputs
+

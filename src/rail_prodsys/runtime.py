@@ -41,20 +41,22 @@ def vehicle_dispatch_heuristic(possible_requests: list) -> None:
       2. a busy vehicle that already queues requests of the same origin/target with seats left
          (join that lot, so vehicles run full when demand is high),
       3. the vehicle with the fewest queued requests, nearest first.
+    Ties are broken by vehicle ID: prodsys collects the candidates in a set, so their order depends
+    on the string hash seed of the process and would make runs irreproducible across processes.
     """
 
-    def key(request) -> Tuple[int, float, float]:
+    def key(request) -> Tuple[int, float, float, str]:
         vehicle = request.resource
         queue = vehicle.controller.requests
         origin = getattr(request, "origin", None)
         distance = math.dist(vehicle.get_location(), origin.get_location()) if origin is not None else 0.0
         if not queue and vehicle.get_free_capacity() > 0:
-            return 0, distance, 0.0
+            return 0, distance, 0.0, vehicle.data.ID
         od = (_locatable_id(origin), _locatable_id(getattr(request, "target", None)))
         same_od = sum(1 for q in queue if (_locatable_id(q.origin), _locatable_id(q.target)) == od)
         if 0 < same_od % vehicle.data.capacity:
-            return 1, -same_od, distance
-        return 2, len(queue), distance
+            return 1, -same_od, distance, vehicle.data.ID
+        return 2, len(queue), distance, vehicle.data.ID
 
     possible_requests.sort(key=key)
 
