@@ -1,8 +1,9 @@
 """
 prodsys simulation backend with the same interface as simulation.simulate_schedule.
 
-The production system is built once per process and input data; every evaluation runs a fresh
-prodsys Runner on a copy of it, attaches the runtime coupling and derives the objectives.
+Per process and input data the timetable is loaded and the production system built once. Every
+evaluation plans the construction timetable (Baufahrplan) for the maintenance plan, runs a fresh
+prodsys Runner along it and derives the objectives.
 """
 from __future__ import annotations
 
@@ -17,25 +18,33 @@ from prodsys.simulation.runner import Runner
 from assets import InfrastructureState
 from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
 from rail_prodsys.network import RailModelConfig, RailNetwork, build_network
-from rail_prodsys.runtime import (
-    InfrastructureCoupling,
-    PassengerDispatcher,
-    RouteChooser,
-    vehicle_dispatch_heuristic,
-)
+from rail_prodsys.runtime import PassengerDispatcher, TimetableOperator, TimetableRouteChooser
+from timetable.disposition import ConstructionTimetable, plan_construction_timetable
+from timetable.gtfs import load_gtfs
 
 sim.VERBOSE = 0  # no tqdm progress bar per run
 prodsys.set_logging("WARNING")
 
-_NETWORK_CACHE: Dict[Tuple[int, int, int, str], RailNetwork] = {}
+_NETWORK_CACHE: Dict[Tuple, RailNetwork] = {}
 
 
 def get_network(
-    nodes: Dict[str, Node], edges: Dict[str, Edge], flows: List[PassengerFlow], config: RailModelConfig
+    nodes: Dict[str, Node],
+    edges: Dict[str, Edge],
+    flows: List[PassengerFlow],
+    config: RailModelConfig,
+    horizon_hours: float,
 ) -> RailNetwork:
-    key = (id(nodes), id(edges), id(flows), repr(config))
+    key = (id(nodes), id(edges), id(flows), repr(config), float(horizon_hours))
     if key not in _NETWORK_CACHE:
-        _NETWORK_CACHE[key] = build_network(nodes, edges, flows, config)
+        timetable = load_gtfs(
+            config.gtfs_dir,
+            edges,
+            horizon_hours,
+            start_date=config.timetable_start_date,
+            min_turnaround_minutes=config.disposition.min_turnaround_minutes,
+        )
+        _NETWORK_CACHE[key] = build_network(nodes, edges, flows, timetable, config)
     return _NETWORK_CACHE[key]
 
 
@@ -46,8 +55,9 @@ class ProdsysRun:
     result: SimulationResult
     network: RailNetwork
     infra: InfrastructureState
+    construction: ConstructionTimetable
     runner: Runner
-    coupling: InfrastructureCoupling
+    operator: TimetableOperator
     dispatcher: PassengerDispatcher
 
 
@@ -75,18 +85,20 @@ def run_prodsys(
     config: Optional[RailModelConfig] = None,
 ) -> ProdsysRun:
     config = config or RailModelConfig()
-    network = get_network(nodes, edges, flows, config)
+    network = get_network(nodes, edges, flows, config, horizon_hours)
     infra = InfrastructureState(assets, schedule, horizon_hours)
+    construction = plan_construction_timetable(network.timetable, edges, infra, config.disposition)
     horizon_minutes = float(horizon_hours) * 60.0
 
     data = network.production_system.model_copy(deep=True)
     data.seed = int(rng.integers(0, 2**31 - 1))
     runner = Runner(production_system_data=data)
     runner.initialize_simulation()
-    runner.product_factory.routing_heuristic_override = vehicle_dispatch_heuristic
-    coupling = InfrastructureCoupling(runner, network, infra)
-    coupling.start(horizon_minutes)
-    dispatcher = PassengerDispatcher(runner, network, flows, rng, choose_route=RouteChooser(network, coupling))
+    operator = TimetableOperator(runner, network, construction, infra, edges)
+    operator.start(horizon_minutes)
+    dispatcher = PassengerDispatcher(
+        runner, network, flows, rng, choose_route=TimetableRouteChooser(network, construction, operator)
+    )
     dispatcher.start(horizon_minutes)
     runner.run(horizon_minutes)
 
@@ -102,4 +114,4 @@ def run_prodsys(
         total_cost=infra.total_cost(),
         schedule={a: w.start_hour for a, w in infra.windows.items()},
     )
-    return ProdsysRun(result, network, infra, runner, coupling, dispatcher)
+    return ProdsysRun(result, network, infra, construction, runner, operator, dispatcher)

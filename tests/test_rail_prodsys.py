@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pytest
 
@@ -6,144 +8,88 @@ from rail_prodsys.backend import get_network, run_prodsys, simulate_schedule_pro
 from rail_prodsys.network import RailModelConfig, find_route_variants
 
 HORIZON = 14.0  # hours: short prodsys runs, but long enough for a 12 h job
+WORKS = {"Luzern_Weiche_1": 1.0}  # L_K_Z from 1 h to 13 h: track capacity 2 -> 1, slower
 
 
 @pytest.fixture(scope="module")
 def network(network_data):
     nodes, edges, _, flows = network_data
-    return get_network(nodes, edges, flows, RailModelConfig())
+    return get_network(nodes, edges, flows, RailModelConfig(), HORIZON)
 
 
-def test_lines_carry_nominal_capacity(network, network_data):
-    _, edges, _, _ = network_data
-    config = network.config
-    assert set(network.lines) == set(edges)
-    for edge_id, line in network.lines.items():
-        per_hour = line.vehicles_day * line.seats * config.group_size / (line.round_trip_minutes / 60.0)
-        assert per_hour >= edges[edge_id].capacity_at_day / 12.0
-        assert 1 <= line.vehicles_night <= line.vehicles_day
+@pytest.fixture(scope="module")
+def works_run(network_data):
+    nodes, edges, assets, flows = network_data
+    return run_prodsys(nodes, edges, assets, flows, WORKS, np.random.default_rng(5), HORIZON)
 
 
-def test_routes_and_ids(network, network_data):
-    _, _, _, flows = network_data
+def test_vehicles_and_lines_from_timetable(network, network_data):
+    _, edges, _, flows = network_data
+    blocks = network.timetable.blocks()
+    assert set(network.vehicle_groups) == {f"veh_{b}" for b in blocks}
+    for block, trips in blocks.items():
+        assert network.vehicle_groups[f"veh_{block}"] == math.ceil(max(t.seats for t in trips) / network.config.group_size)
+    assert set(network.lines) == set(edges)  # synthetic timetable: one route per edge
     assert set(network.routes) == {(f.origin, f.destination) for f in flows}
     product_ids = [v.product_id for vs in network.routes.values() for v in vs]
     assert len(product_ids) == len(set(product_ids))
-    for (o, d), variants in network.routes.items():
-        assert variants[0].stations[0] == o and variants[0].stations[-1] == d
 
 
 def test_route_variants_with_transfer(network_data):
     _, edges, _, _ = network_data
-    config = RailModelConfig(max_route_variants=3)
-    variants = find_route_variants("Luzern", "Küsnacht_am_Rigi", edges, config)
+    variants = find_route_variants("Luzern", "Küsnacht_am_Rigi", edges, RailModelConfig(max_route_variants=3))
     assert variants[0] == (["Luzern", "Küsnacht_am_Rigi"], ["L_K_Z"])
     assert variants[1] == (["Luzern", "Weggis", "Küsnacht_am_Rigi"], ["W_L_S", "W_K_B"])
 
 
 def test_prodsys_run(network_data):
     nodes, edges, assets, flows = network_data
-    plan = {"Luzern_Weiche_1": 1.0}
-    result = simulate_schedule_prodsys(nodes, edges, assets, flows, plan, np.random.default_rng(1), HORIZON)
-    again = simulate_schedule_prodsys(nodes, edges, assets, flows, plan, np.random.default_rng(1), HORIZON)
+    result = simulate_schedule_prodsys(nodes, edges, assets, flows, WORKS, np.random.default_rng(1), HORIZON)
+    again = simulate_schedule_prodsys(nodes, edges, assets, flows, WORKS, np.random.default_rng(1), HORIZON)
     assert result == again  # deterministic for the same seed
 
     assert 0 < result.served_trips <= result.generated_trips
     fastest_minutes = min(e.base_travel_time_min for e in edges.values())
     assert result.avg_travel_time * 60.0 > fastest_minutes
-    infra = InfrastructureState(assets, plan, HORIZON)
+    infra = InfrastructureState(assets, WORKS, HORIZON)
     assert result.avg_condition == pytest.approx(infra.average_condition())
     assert result.total_cost == pytest.approx(infra.total_cost())
-    assert result.schedule == {"Luzern_Weiche_1": 1.0}
+    assert result.schedule == WORKS
 
 
-def test_coupling_vehicles_and_slowdown(network, network_data):
-    from prodsys.simulation.runner import Runner
-
-    from rail_prodsys.runtime import InfrastructureCoupling
-
-    _, _, assets, _ = network_data
-    plan = {"Luzern_Weiche_1": 1.0}  # works on L_K_Z from 1 h to 13 h
-    infra = InfrastructureState(assets, plan, HORIZON)
-    runner = Runner(production_system_data=network.production_system.model_copy(deep=True))
-    runner.initialize_simulation()
-    coupling = InfrastructureCoupling(runner, network, infra)
-
-    line = network.lines["L_K_Z"]
-    assert coupling.vehicles_in_service(line, 0.5) == line.vehicles_day
-    assert coupling.vehicles_in_service(line, 5.0) == round(line.vehicles_day * infra.capacity_factor)
-    assert coupling.vehicles_in_service(line, 13.5) == line.vehicles_night  # night, works finished
-    other = network.lines["W_K_B"]
-    assert coupling.vehicles_in_service(other, 5.0) == other.vehicles_day
-
-    coupling.start(HORIZON * 60.0)
-    runner.run(HORIZON * 60.0)
-    in_service = {(round(t), line_id): n for t, line_id, n in coupling.availability_log}
-    assert in_service[(60, "L_K_Z")] == 2 and in_service[(720, "L_K_Z")] == 1 and in_service[(780, "L_K_Z")] == 2
-    vehicle = runner.resource_factory.get_resource(line.vehicle_ids[0])
-    assert all(hasattr(s.time_model, "_inner") for s in vehicle.production_states)
+def test_vehicles_follow_construction_timetable(works_run):
+    """Vehicles depart exactly as in the construction timetable and never carry more than their seats."""
+    operated = works_run.construction.operated().trips
+    planned_legs = {(f"veh_{t.block_id}", t.trip_id, leg.departure) for t in operated for leg in t.legs}
+    departed = {(d.vehicle_id, d.trip_id, d.scheduled) for d in works_run.operator.departures}
+    assert departed == {leg for leg in planned_legs if leg[2] < HORIZON * 60.0}
+    assert all(abs(d.actual - d.scheduled) < 1e-6 for d in works_run.operator.departures)
+    assert works_run.operator.capacity.wait_minutes == 0.0  # disposition already respects track capacity
+    group = works_run.network.config.group_size
+    seats = {t.trip_id: math.ceil(t.seats / group) for t in operated}
+    assert all(d.boarded <= seats[d.trip_id] for d in works_run.operator.departures)
+    assert sum(d.boarded for d in works_run.operator.departures) > 0
+    cancelled = {o.planned.trip_id for o in works_run.construction.trips if o.trip is None}
+    assert cancelled and not cancelled & {d.trip_id for d in works_run.operator.departures}
 
 
-def test_maintenance_slows_down_trips(network_data):
+def test_maintenance_slows_down_trips(network_data, works_run):
     nodes, edges, assets, flows = network_data
-    no_works = simulate_schedule_prodsys(nodes, edges, assets, flows, {}, np.random.default_rng(3), HORIZON)
-    works = simulate_schedule_prodsys(
-        nodes, edges, assets, flows, {"Luzern_Weiche_1": 1.0}, np.random.default_rng(3), HORIZON
-    )
-    assert works.generated_trips == no_works.generated_trips  # same demand (common random numbers)
-    assert works.avg_travel_time > no_works.avg_travel_time
+    no_works = simulate_schedule_prodsys(nodes, edges, assets, flows, {}, np.random.default_rng(5), HORIZON)
+    assert works_run.result.generated_trips == no_works.generated_trips  # same demand (common random numbers)
+    assert works_run.result.avg_travel_time > no_works.avg_travel_time
 
 
-def test_route_choice_avoids_works(network_data):
+def test_route_choice_avoids_works(network_data, works_run):
     """Works on the direct line Luzern-Kuessnacht shift passengers to the detour via Weggis."""
     nodes, edges, assets, flows = network_data
+    no_works = run_prodsys(nodes, edges, assets, flows, {}, np.random.default_rng(5), HORIZON)
     shares = {}
-    for label, plan in (("no works", {}), ("works", {"Luzern_Weiche_1": 1.0})):
-        run = run_prodsys(nodes, edges, assets, flows, plan, np.random.default_rng(5), HORIZON)
+    for label, run in (("no works", no_works), ("works", works_run)):
         counts = run.dispatcher.route_counts
         direct, detour = counts["pax_Luzern_Küsnacht_am_Rigi_r0"], counts["pax_Luzern_Küsnacht_am_Rigi_r1"]
         shares[label] = detour / (direct + detour)
     assert shares["works"] > shares["no works"]
-
-
-def _fake_request(vehicle, origin="src_A", target="station_B"):
-    from types import SimpleNamespace
-
-    def locatable(lid, xy):
-        return SimpleNamespace(data=SimpleNamespace(ID=lid), get_location=lambda: xy)
-
-    return SimpleNamespace(resource=vehicle, origin=locatable(origin, [0.0, 0.0]), target=locatable(target, [9.0, 9.0]))
-
-
-def _fake_vehicle(name, location, queued_ods=(), free_capacity=0, seats=4):
-    from types import SimpleNamespace
-
-    vehicle = SimpleNamespace(
-        name=name,
-        data=SimpleNamespace(ID=name, capacity=seats),
-        get_location=lambda: location,
-        get_free_capacity=lambda: free_capacity,
-    )
-    vehicle.controller = SimpleNamespace(requests=[])
-    vehicle.controller.requests = [_fake_request(vehicle, *od) for od in queued_ods]
-    return vehicle
-
-
-def test_dispatch_heuristic_order():
-    from rail_prodsys.runtime import vehicle_dispatch_heuristic
-
-    idle_far = _fake_vehicle("idle_far", [500.0, 0.0], free_capacity=4)
-    idle_near = _fake_vehicle("idle_near", [10.0, 0.0], free_capacity=4)
-    joinable = _fake_vehicle("joinable", [0.0, 0.0], queued_ods=[("src_A", "station_B")] * 2)
-    full_lot = _fake_vehicle("full_lot", [0.0, 0.0], queued_ods=[("src_A", "station_B")] * 4)
-    other = _fake_vehicle("other", [0.0, 0.0], queued_ods=[("src_C", "station_B")])
-    requests = [_fake_request(v) for v in (other, full_lot, joinable, idle_far, idle_near)]
-    vehicle_dispatch_heuristic(requests)
-    assert [r.resource.name for r in requests] == ["idle_near", "idle_far", "joinable", "other", "full_lot"]
-
-    busy = [_fake_request(v) for v in (other, full_lot, joinable)]
-    vehicle_dispatch_heuristic(busy)
-    assert busy[0].resource.name == "joinable"
 
 
 _REPRO_SCRIPT = """
@@ -181,12 +127,11 @@ def test_ga_backend_selection(network_data):
     import ga
 
     nodes, edges, assets, flows = network_data
-    schedule = {"Luzern_Weiche_1": 1.0}
     results = {}
     for backend in ga.BACKENDS:
         ga._init_worker(nodes, edges, assets, flows, HORIZON, 42, backend=backend, group_size=10)
-        results[backend], _ = ga._simulate(schedule)
-    expected = simulate_schedule_prodsys(nodes, edges, assets, flows, schedule, np.random.default_rng(42), HORIZON)
+        results[backend], _ = ga._simulate(WORKS)
+    expected = simulate_schedule_prodsys(nodes, edges, assets, flows, WORKS, np.random.default_rng(42), HORIZON)
     assert results["prodsys"] == expected
     assert results["simpy"].avg_condition == pytest.approx(expected.avg_condition)  # same asset layer semantics
     with pytest.raises(ValueError):

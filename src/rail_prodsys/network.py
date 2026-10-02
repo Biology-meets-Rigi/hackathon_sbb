@@ -1,11 +1,16 @@
 """
 Build a prodsys production system from the rail network data.
 
-- station   -> production resource with the processes transfer_<S> and alight_<S>,
-               plus a walkway resource that brings passengers from the station to the exit (sink)
-- edge      -> line: a LinkTransportProcess over two track nodes, served by its own vehicles
+- station   -> production resource with the processes transfer_<S> and alight_<S>, plus a
+               walkway resource that brings passengers from the station to the exits (sinks).
+               Sources release new passengers directly into the station queue, so everybody
+               boarding at a station waits in the same queue and the vehicle takes them as one lot.
+- vehicle   -> transport resource running one block (Umlauf) of the timetable; vehicles with the
+               same sections share a LinkTransportProcess over the track nodes of these sections
 - passengers-> products (one product = a group of passengers), one product type per
                origin/destination pair and route variant, each with its own source and sink
+Vehicles do not move on demand: the runtime operator (rail_prodsys.runtime) runs them along the
+construction timetable and boards the waiting passengers at every departure.
 
 Time unit in prodsys is minutes; locations are metres in a local projection of lat/lon.
 Note: avoid local names like `resources`, `process`, `product`, `source`, `sink`, `node` here.
@@ -14,14 +19,18 @@ pydantic resolves prodsys' forward references in the caller's namespace on the f
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import prodsys.express as psx
 from prodsys.models.production_system_data import ProductionSystemData
 
-from assets import HOURS_PER_HALF_DAY
 from data_models import Edge, Node, PassengerFlow
+from timetable.disposition import DispositionConfig
+from timetable.model import Timetable
+
+DEFAULT_GTFS_DIR = str(Path(__file__).resolve().parents[2] / "data" / "gtfs")
 
 PASSENGER_CAPABILITY = "passenger_transport"
 # Offsets of the station and walkway resources from the track node (production resources may not
@@ -33,7 +42,9 @@ WALKWAY_OFFSET_M = (-30.0, -30.0)
 @dataclass
 class RailModelConfig:
     group_size: int = 10  # passengers per simulated product
-    vehicles_per_line: int = 4
+    gtfs_dir: str = DEFAULT_GTFS_DIR  # timetable (reference year or synthetic, see generate_timetable.py)
+    timetable_start_date: Optional[str] = None  # YYYYMMDD of horizon start; default: first service day
+    disposition: DispositionConfig = field(default_factory=DispositionConfig)
     dwell_minutes: float = 2.0  # transfer / alighting at a station
     walk_speed_m_per_min: float = 80.0  # station -> exit
     station_capacity: int = 50  # passenger groups processed in parallel at a station
@@ -43,18 +54,14 @@ class RailModelConfig:
 
 @dataclass
 class Line:
-    edge_id: str
-    mode: str
-    stations: Tuple[str, str]
-    base_minutes: float
-    vehicle_ids: List[str]
-    seats: int  # passenger groups per vehicle
-    vehicles_day: int
-    vehicles_night: int
+    """A timetable route (GTFS route) and the vehicles running its trips."""
 
-    @property
-    def round_trip_minutes(self) -> float:
-        return 2.0 * self.base_minutes
+    route_id: str
+    mode: str
+    edges: List[str]
+    stations: List[str]
+    vehicle_ids: List[str]
+    seats: int  # passengers per vehicle (largest trip capacity)
 
 
 @dataclass
@@ -77,7 +84,9 @@ class RouteVariant:
 class RailNetwork:
     config: RailModelConfig
     production_system: ProductionSystemData
-    lines: Dict[str, Line]
+    timetable: Timetable  # regular timetable of the horizon
+    lines: Dict[str, Line]  # per route_id
+    vehicle_groups: Dict[str, int]  # vehicle resource id -> passenger groups it can carry
     routes: Dict[Tuple[str, str], List[RouteVariant]]
 
 
@@ -94,17 +103,6 @@ def _projection(nodes: Dict[str, Node]):
 
 def _offset(xy: List[float], offset: Tuple[float, float]) -> List[float]:
     return [xy[0] + offset[0], xy[1] + offset[1]]
-
-
-def _size_line(edge: Edge, config: RailModelConfig) -> Tuple[int, int, int]:
-    """Seats (groups) per vehicle so that the line carries capacity_at_day per 12 h; vehicles at night."""
-    per_hour = edge.capacity_at_day / HOURS_PER_HALF_DAY
-    round_trip_hours = 2.0 * edge.base_travel_time_min / 60.0
-    seats_pax = per_hour * round_trip_hours / config.vehicles_per_line
-    seats = max(1, math.ceil(seats_pax / config.group_size))
-    night_share = edge.capacity_at_night / edge.capacity_at_day if edge.capacity_at_day > 0 else 1.0
-    vehicles_night = max(1, round(config.vehicles_per_line * night_share))
-    return seats, config.vehicles_per_line, vehicles_night
 
 
 def find_route_variants(
@@ -145,9 +143,11 @@ def build_network(
     nodes: Dict[str, Node],
     edges: Dict[str, Edge],
     flows: List[PassengerFlow],
+    timetable: Timetable,
     config: Optional[RailModelConfig] = None,
 ) -> RailNetwork:
     config = config or RailModelConfig()
+    served_edges = {e: edges[e] for e in sorted({leg.edge_id for t in timetable.trips for leg in t.legs})}
     to_xy = _projection(nodes)
     station_xy = {sid: to_xy(n.location_x, n.location_y) for sid, n in nodes.items()}
 
@@ -176,7 +176,7 @@ def build_network(
     for od in sorted({(f.origin, f.destination) for f in flows}):
         origin, destination = od
         variants = []
-        for index, (stations, path_edges) in enumerate(find_route_variants(origin, destination, edges, config)):
+        for index, (stations, path_edges) in enumerate(find_route_variants(origin, destination, served_edges, config)):
             suffix = f"{origin}_{destination}_r{index}"
             steps = [station_procs[f"transfer_{s}"] for s in stations[1:-1]] + [station_procs[f"alight_{destination}"]]
             pax = psx.Product(process=steps, transport_process=ride, ID=f"pax_{suffix}")
@@ -191,34 +191,54 @@ def build_network(
             raise ValueError(f"No route from {origin} to {destination}")
         routes[od] = variants
 
-    # Lines: one per edge, with its own vehicles
+    # Vehicles: one transport resource per block; vehicles with the same sections share a process.
+    # Section run times come from the construction timetable at runtime (rail_prodsys.runtime), so
+    # the distance time model only covers the short connector hops station <-> track node.
+    blocks = timetable.blocks()
+    connector = psx.DistanceTimeModel(speed=1e6, reaction_time=0.0, metric="euclidean", ID="t_vehicle_connector")
+
+    def sections_of(block_trips) -> Tuple[str, ...]:
+        return tuple(sorted({leg.edge_id for t in block_trips for leg in t.legs}))
+
+    def groups_of(block_trips) -> int:
+        return max(1, math.ceil(max(t.seats for t in block_trips) / config.group_size))
+
+    vehicle_res, vehicle_groups, line_procs = [], {}, {}
+    for vid, block_trips in sorted(blocks.items()):
+        sections = sections_of(block_trips)
+        if sections not in line_procs:
+            line_stations = sorted({st for e in sections for st in (edges[e].start_node, edges[e].end_node)})
+            links = [[track_nodes[edges[e].start_node], track_nodes[edges[e].end_node]] for e in sections]
+            links += [[station_res[st], track_nodes[st]] for st in line_stations]
+            max_groups = max(groups_of(b) for b in blocks.values() if sections_of(b) == sections)
+            lot = psx.LotDependency(min_lot_size=1, max_lot_size=max_groups, ID=f"lot_line_{len(line_procs)}")
+            line_procs[sections] = psx.LinkTransportProcess(
+                time_model=connector,
+                capability=PASSENGER_CAPABILITY,
+                ID=f"line_{'+'.join(sections)}",
+                dependencies=[lot],
+                links=links,
+            )
+        groups = groups_of(block_trips)
+        vehicle_res.append(
+            psx.Resource(
+                [line_procs[sections]], location=station_xy[block_trips[0].start_station], capacity=groups, ID=f"veh_{vid}"
+            )
+        )
+        vehicle_groups[f"veh_{vid}"] = groups
+
     lines: Dict[str, Line] = {}
-    vehicle_res = []
-    for edge_id, edge in edges.items():
-        a, b = edge.start_node, edge.end_node
-        seats, vehicles_day, vehicles_night = _size_line(edge, config)
-        distance = math.dist(station_xy[a], station_xy[b])
-        travel = psx.DistanceTimeModel(
-            speed=distance / edge.base_travel_time_min, reaction_time=0.0, metric="euclidean", ID=f"t_line_{edge_id}"
-        )
-        links = [[track_nodes[a], track_nodes[b]], [station_res[a], track_nodes[a]], [station_res[b], track_nodes[b]]]
-        for src_obj in pax_sources.values():
-            for s in (a, b):
-                if src_obj.location == station_xy[s]:
-                    links.append([src_obj, track_nodes[s]])
-        lot = psx.LotDependency(min_lot_size=1, max_lot_size=seats, ID=f"lot_line_{edge_id}")
-        line_proc = psx.LinkTransportProcess(
-            time_model=travel, capability=PASSENGER_CAPABILITY, ID=f"line_{edge_id}", dependencies=[lot], links=links
-        )
-        vehicle_ids = []
-        for i in range(vehicles_day):
-            home = a if i % 2 == 0 else b
-            vid = f"veh_{edge_id}_{i}"
-            vehicle_res.append(psx.Resource([line_proc], location=station_xy[home], capacity=seats, ID=vid))
-            vehicle_ids.append(vid)
-        lines[edge_id] = Line(
-            edge_id, edge.mode, (a, b), float(edge.base_travel_time_min), vehicle_ids, seats, vehicles_day, vehicles_night
-        )
+    for trip in timetable.trips:
+        line = lines.setdefault(trip.route_id, Line(trip.route_id, trip.mode, [], [], [], 0))
+        for leg in trip.legs:
+            if leg.edge_id not in line.edges:
+                line.edges.append(leg.edge_id)
+            for st in (leg.from_station, leg.to_station):
+                if st not in line.stations:
+                    line.stations.append(st)
+        if f"veh_{trip.block_id}" not in line.vehicle_ids:
+            line.vehicle_ids.append(f"veh_{trip.block_id}")
+        line.seats = max(line.seats, trip.seats)
 
     # Walkways: station -> exits (sinks) of all routes ending there
     walk = psx.DistanceTimeModel(speed=config.walk_speed_m_per_min, reaction_time=0.0, metric="euclidean", ID="t_walk")
@@ -245,5 +265,17 @@ def build_network(
         list(pax_sinks.values()),
     )
     data = system.to_model()
+    # Sources release into the queue of their station (no access transport, one boarding queue)
+    station_queue = {r.ID: r.ports[0] for r in data.resource_data if r.ID.startswith("station_")}
+    for source_data in data.source_data:
+        origin = next(v.origin for variants in routes.values() for v in variants if v.source_id == source_data.ID)
+        source_data.ports = [station_queue[f"station_{origin}"]]
     data.validate_configuration()
-    return RailNetwork(config=config, production_system=data, lines=lines, routes=routes)
+    return RailNetwork(
+        config=config,
+        production_system=data,
+        timetable=timetable,
+        lines=lines,
+        vehicle_groups=vehicle_groups,
+        routes=routes,
+    )
