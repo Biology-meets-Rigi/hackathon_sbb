@@ -1124,42 +1124,64 @@ details = best_result.get("details") if isinstance(best_result, dict) else None
 if isinstance(details, dict) and details.get("backend") == "prodsys":
     st.markdown("## prodsys: lines and routes")
     st.caption(
-        f"Simulated with prodsys, passengers in groups of {details.get('group_size')}. "
-        "Driving share = time the line's vehicles are driving (loaded or empty to the next pick-up)."
+        f"Simulated with prodsys along the construction timetable, passengers in groups of {details.get('group_size')}. "
+        "Load factor = boarded passengers / offered seats over all departures. Left behind = passengers that did "
+        "not fit into a departure (counted per departure)."
     )
-    line_rows = [
-        {
-            "Line": line_id,
-            "Mode": line.get("mode"),
-            "Stations": " - ".join(line.get("stations", [])),
-            "Vehicles day/night": f"{line.get('vehicles_day')}/{line.get('vehicles_night')}",
-            "Seats per vehicle": line.get("seats_per_vehicle"),
-            "Driving share %": round(float(line.get("driving_share_pct", 0.0)), 1),
-            "Works (h)": round(float(line.get("maintenance_hours", 0.0)), 1),
-        }
-        for line_id, line in details.get("lines", {}).items()
+    line_rows = []
+    for line_id, line in details.get("lines", {}).items():
+        trips = line.get("trips", {})
+        line_rows.append(
+            {
+                "Line": line_id,
+                "Mode": line.get("mode"),
+                "Stations": " - ".join(line.get("stations", [])),
+                "Vehicles": line.get("vehicles"),
+                "Seats per vehicle": line.get("seats_per_vehicle"),
+                "Load factor %": round(float(line.get("load_factor_pct", 0.0)), 1),
+                "Passengers": line.get("passengers"),
+                "Left behind": line.get("left_behind_passengers"),
+                "Works (h)": round(float(line.get("maintenance_hours", 0.0)), 1),
+                "Trips planned": trips.get("planned"),
+                "Cancelled": trips.get("cancelled"),
+                "Delayed": trips.get("delayed"),
+                "Rerouted": trips.get("rerouted"),
+                "Short-turned": trips.get("short_turned"),
+                "Mean delay (min)": round(float(trips.get("mean_delay_minutes", 0.0)), 1),
+            }
+        )
+    st.dataframe(pd.DataFrame(line_rows), hide_index=True, width="stretch")
+
+    # Outcome of the disposition per line: status palette (good / warning / serious / critical),
+    # each with a symbol and label so the state never depends on color alone.
+    outcome_series = [
+        ("\u2713 on time", "#0ca30c", lambda t: t.get("on_time", 0)),
+        ("\u26a0 delayed", "#fab219", lambda t: t.get("delayed", 0)),
+        ("\u21bb rerouted / short-turned", "#ec835a", lambda t: t.get("rerouted", 0) + t.get("short_turned", 0)),
+        ("\u2715 cancelled", "#d03b3b", lambda t: t.get("cancelled", 0)),
     ]
-    col_lines, col_util = st.columns([3, 2], gap="large")
-    with col_lines:
-        st.dataframe(pd.DataFrame(line_rows), hide_index=True, width="stretch")
-    with col_util:
-        fig_util = go.Figure(
+    line_ids = list(details.get("lines", {}).keys())
+    fig_trips = go.Figure()
+    for name, color, value in outcome_series:
+        counts = [value(details["lines"][line_id].get("trips", {})) for line_id in line_ids]
+        fig_trips.add_trace(
             go.Bar(
-                x=[r["Line"] for r in line_rows],
-                y=[r["Driving share %"] for r in line_rows],
-                marker_color=[edge_color_by_edge_id.get(r["Line"], "#28a745") for r in line_rows],
-                text=[f"{r['Driving share %']:.0f}%" for r in line_rows],
-                textposition="auto",
-                hovertemplate="%{x}: %{y:.1f}% driving<extra></extra>",
+                x=line_ids,
+                y=counts,
+                name=name,
+                marker=dict(color=color, line=dict(color="#ffffff", width=2)),
+                hovertemplate="%{x} \u00b7 " + name + ": %{y} trips<extra></extra>",
             )
         )
-        fig_util.update_layout(
-            height=260,
-            margin={"l": 20, "r": 20, "t": 30, "b": 20},
-            yaxis=dict(range=[0, 100], title_text="Driving share %"),
-            title_text="Vehicle driving share per line",
-        )
-        st.plotly_chart(fig_util, width="stretch")
+    fig_trips.update_layout(
+        barmode="stack",
+        height=300,
+        margin={"l": 20, "r": 20, "t": 40, "b": 20},
+        title_text="Trips per line in the construction timetable",
+        yaxis=dict(title_text="Trips", gridcolor="rgba(137,135,129,0.2)"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0),
+    )
+    st.plotly_chart(fig_trips, width="stretch")
 
     route_rows = []
     for relation, route in details.get("routes", {}).items():
