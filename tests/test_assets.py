@@ -57,3 +57,12 @@ def test_parity_with_simpy_model(network_data):
     result = simulate_schedule(nodes, edges, assets, flows, PLAN, np.random.default_rng(0), HORIZON)
     assert infra.average_condition() == pytest.approx(result.avg_condition)
     assert infra.total_cost() == pytest.approx(result.total_cost)
+
+
+def test_slowdown_relative_to_timetable(network_data):
+    _, _, assets, _ = network_data
+    infra = InfrastructureState(assets, {"Luzern_Weiche_1": 30.0}, HORIZON)  # works on L_K_Z 30..42 h
+    assert infra.edge_slowdown_vs_timetable("L_K_Z", 0.0) == pytest.approx(1.0)  # timetable state
+    assert 1.0 < infra.edge_slowdown_vs_timetable("L_K_Z", 29.0) < 1.05  # degradation since the start
+    assert infra.edge_slowdown_vs_timetable("L_K_Z", 31.0) > infra.slowdown_factor - 1e-9  # works
+    assert infra.edge_slowdown_vs_timetable("W_K_B", 0.0) == pytest.approx(1.0)

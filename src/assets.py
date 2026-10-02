@@ -125,6 +125,15 @@ class InfrastructureState:
             factor *= self.slowdown_factor
         return factor
 
+    def edge_slowdown_vs_timetable(self, edge_id: str, t: float) -> float:
+        """
+        Run time factor relative to the timetable: a timetable already contains the run times for the
+        infrastructure state at the start of the horizon, so only further degradation and works slow
+        trains down (never below 1: renewed track does not make trains faster than scheduled).
+        """
+        reference = 1.0 + (1.0 - min((self.assets[a].condition_initial for a in self.edge_assets.get(edge_id, [])), default=1.0))
+        return max(1.0, self.edge_slowdown(edge_id, t) / reference)
+
     def edge_capacity_factor(self, edge_id: str, t: float) -> float:
         return self.capacity_factor if self.edge_under_maintenance(edge_id, t) else 1.0
 

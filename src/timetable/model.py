@@ -6,8 +6,17 @@ A vehicle block (Umlauf) is the ordered list of trips one vehicle runs.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from typing import Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+
+@dataclass(frozen=True)
+class Section:
+    """Occupation of one section (edge) by a vehicle."""
+
+    edge_id: str
+    start: float
+    end: float
 
 
 @dataclass(frozen=True)
@@ -17,10 +26,17 @@ class Leg:
     to_station: str
     departure: float
     arrival: float
+    # Sections actually used; empty = the leg's own edge. A rerouted leg keeps from/to (passengers
+    # ride from_station -> to_station) but occupies the sections of the detour.
+    detour: Tuple[Section, ...] = ()
 
     @property
     def run_minutes(self) -> float:
         return self.arrival - self.departure
+
+    @property
+    def sections(self) -> Tuple[Section, ...]:
+        return self.detour or (Section(self.edge_id, self.departure, self.arrival),)
 
 
 @dataclass
@@ -48,10 +64,6 @@ class Trip:
     @property
     def end_station(self) -> str:
         return self.legs[-1].to_station
-
-    def shifted(self, minutes: float) -> "Trip":
-        legs = [replace(leg, departure=leg.departure + minutes, arrival=leg.arrival + minutes) for leg in self.legs]
-        return replace(self, legs=legs)
 
 
 @dataclass
