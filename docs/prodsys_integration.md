@@ -68,7 +68,7 @@ prodsys wird nicht verändert; das Backend hängt sich nach `Runner.initialize_s
 | Etappe | Inhalt | Status |
 |---|---|---|
 | 1 | Abhängigkeiten, Anlagen-Schicht mit Tests, diese Doku | erledigt |
-| 2 | Netz-Builder und Basislauf (direkte Routen) | offen |
+| 2 | Netz-Builder und Basislauf (direkte Routen) | erledigt |
 | 3 | Kopplung Anlagen ↔ prodsys (Kapazität Tag/Nacht/Baustelle, Langsamfahrt) | offen |
 | 4 | Umsteigen und Umrouten (Routenvarianten) | offen |
 | 5 | GA-Anbindung (Backend-Schalter, prodsys-Kennzahlen) | offen |
