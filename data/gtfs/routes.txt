@@ -1,0 +1,7 @@
+route_id,agency_id,route_short_name,route_long_name,route_type,vehicle_capacity
+W_L_S,hackathon,W_L_S,Weggis - Luzern,4,450
+L_K_Z,hackathon,L_K_Z,Luzern - Küsnacht_am_Rigi,2,214
+K_A_Z,hackathon,K_A_Z,Küsnacht_am_Rigi - Arth_Goldau,2,160
+R_A_Z,hackathon,R_A_Z,Rigi - Arth_Goldau,2,50
+W_R_L,hackathon,W_R_L,Weggis - Rigi,6,38
+W_K_B,hackathon,W_K_B,Weggis - Küsnacht_am_Rigi,3,63

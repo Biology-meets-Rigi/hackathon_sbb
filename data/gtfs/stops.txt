@@ -1,0 +1,6 @@
+stop_id,stop_name,stop_lat,stop_lon
+Weggis,Weggis,47.031764,8.433213
+Luzern,Luzern,47.05088,8.31124
+Küsnacht_am_Rigi,Küsnacht am Rigi,47.08293,8.43305
+Arth_Goldau,Arth Goldau,47.04891,8.55378
+Rigi,Rigi,47.05526,8.48603
