@@ -544,7 +544,7 @@ asset_edge_by_asset_id: dict[str, str] = {}
 # Load assets for plotting on the map (emoji by type)
 _assets_for_map: list[dict] = []
 
-# Asset marker label (single-letter) is always used (emojis/symbols are unreliable in Plotly Mapbox).
+# Asset marker label (single-letter) is always used (emojis/symbols are unreliable in Plotly map traces).
 
 def _asset_label(asset_type: str | None) -> str:
     t = (asset_type or "").strip()
@@ -740,7 +740,7 @@ if len(edges) > 0 and isinstance(edges[0], dict):
         edge_id = str(e.get("edge_id") or _edge_key(a, b))
         edge_color = edge_color_by_edge_id.get(edge_id) or _hex_color_from_string(edge_id)
         edge_traces.append(
-            go.Scattermapbox(
+            go.Scattermap(
                 lon=lon,
                 lat=lat,
                 mode="lines",
@@ -759,7 +759,7 @@ else:
         lon_a, lat_a = coord[a]
         lon_b, lat_b = coord[b]
         edge_traces.append(
-            go.Scattermapbox(
+            go.Scattermap(
                 lon=[lon_a, lon_b],
                 lat=[lat_a, lat_b],
                 mode="lines",
@@ -768,20 +768,20 @@ else:
             )
         )
 
-node_trace = go.Scattermapbox(
+node_trace = go.Scattermap(
     lon=[n["lon"] for n in nodes],
     lat=[n["lat"] for n in nodes],
     mode="markers+text",
-    marker=go.scattermapbox.Marker(size=12, color="black", symbol="circle"),
+    marker=go.scattermap.Marker(size=12, color="black", symbol="circle"),
     text=[n["id"] for n in nodes],
     textposition="top center",
     textfont=dict(color="black")
 )
 
-node_trace_inner = go.Scattermapbox(
+node_trace_inner = go.Scattermap(
     lon=[n["lon"] for n in nodes],
     lat=[n["lat"] for n in nodes],
-    marker=go.scattermapbox.Marker(size=6, color="white", symbol="circle"),
+    marker=go.scattermap.Marker(size=6, color="white", symbol="circle"),
 )
 
 # Assets layer (emoji labels)
@@ -794,11 +794,11 @@ if _assets_for_map:
 
     # Single-letter label overlay + colored marker.
     asset_traces.append(
-        go.Scattermapbox(
+        go.Scattermap(
             lon=[a["lon"] for a in _assets_for_map],
             lat=[a["lat"] for a in _assets_for_map],
             mode="markers+text",
-            marker=go.scattermapbox.Marker(
+            marker=go.scattermap.Marker(
                 size=15,
                 #color=[_asset_color(a.get("asset_type")) for a in _assets_for_map],
                 color="white",
@@ -818,7 +818,7 @@ if _assets_for_map:
         )
     )
 
-# Compose and display map. Use an open-access map style that doesn't require a Mapbox token.
+# Compose and display map. Use an open-access map style that does not require a map token (MapLibre).
 fig_map = go.Figure(data=edge_traces + [node_trace, node_trace_inner] + asset_traces)
 if len(nodes) > 0:
     center_lat = sum(n["lat"] for n in nodes) / len(nodes)
@@ -827,7 +827,7 @@ else:
     center_lat, center_lon = 46.8, 8.0
 
 fig_map.update_layout(
-    mapbox=dict(
+    map=dict(
         # Black/white basemap
         style="carto-positron",
         center=dict(lat=float(center_lat), lon=float(center_lon)),
@@ -1092,7 +1092,7 @@ with col_right:
                         yaxis=dict(range=[ymin, ymax], title_text="Value"),
                         title_text=title_map.get(k, k.replace("_", " ").title()),
                     )
-                    st.plotly_chart(fig_o, use_container_width=True)
+                    st.plotly_chart(fig_o, width="stretch")
     else:
         st.info("No objectives found in result to display as charts.")
 
@@ -1175,10 +1175,10 @@ try:
     col_b, col_a = st.columns([1, 1])
     with col_b:
         st.caption("Before mutation")
-        st.plotly_chart(fig_before_mut, use_container_width=True)
+        st.plotly_chart(fig_before_mut, width="stretch")
     with col_a:
         st.caption("After mutation")
-        st.plotly_chart(fig_after_mut, use_container_width=True)
+        st.plotly_chart(fig_after_mut, width="stretch")
 
 except Exception as _e:
     st.warning(f"Could not render mutation demo: {_e}")
@@ -1239,17 +1239,17 @@ try:
     c1, o1, c2, o2, c3 = st.columns([1, 0.1, 1, 0.1, 1])
     with c1:
         st.caption("Parent 1")
-        st.plotly_chart(fig_p1, use_container_width=True)
+        st.plotly_chart(fig_p1, width="stretch")
     with o1:
         st.title("+", text_alignment="center")
     with c2:
         st.caption("Parent 2")
-        st.plotly_chart(fig_p2, use_container_width=True)
+        st.plotly_chart(fig_p2, width="stretch")
     with o2:
         st.title("→", text_alignment="center")
     with c3:
         st.caption("Child (after cxTwoPoint)")
-        st.plotly_chart(fig_child, use_container_width=True)
+        st.plotly_chart(fig_child, width="stretch")
 
 except Exception as e:
     st.warning(f"Could not render mating demo: {e}")

@@ -5,3 +5,6 @@ deap==1.4.4
 openpyxl==3.1.5
 # Pinned exactly: the prodsys backend hooks into prodsys runtime internals (router, sources, transport states)
 prodsys==1.2.3
+# Frontend (streamlit run src/frontend.py)
+streamlit==1.64.0
+plotly==7.1.0
