@@ -1070,6 +1070,8 @@ with col_right:
                         val = float('nan')
 
                     ymin, ymax = y_ranges.get(k, (0.0, max(1.0, abs(val) * 2.0)))
+                    if not math.isnan(val):
+                        ymax = max(ymax, val * 1.1)  # never clip the bar
 
                     # Show value as text on the bar; format to two decimals when numeric
                     text_label = "" if (isinstance(val, float) and (math.isnan(val))) else f"{val:.2f}"
