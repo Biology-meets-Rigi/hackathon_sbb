@@ -48,6 +48,8 @@ class NSGA2Optimizer:
         self.config = config
         self.asset_ids = list(assets.keys())
         self.logger = logging.getLogger("ga")
+        if config.population_size < 4 or config.population_size % 4 != 0:
+            raise ValueError("population_size must be a positive multiple of 4 (NSGA-II tournament selection)")
 
         # Reproducibility
         random.seed(config.seed)
@@ -101,6 +103,8 @@ class NSGA2Optimizer:
         # print(tools.mutPolynomialBounded([0,5,15, 20], eta=0.2, indpb=0.3, low=0.0, up=self.config.horizon_hours))
         # exit()
         self.toolbox.register("select", tools.selNSGA2)
+        # Parent selection: binary tournament on dominance, ties broken by crowding distance
+        self.toolbox.register("select_parents", tools.selTournamentDCD)
         self.toolbox.register("evaluate", self._evaluate)
 
     def _random_start(self) -> float:
@@ -208,20 +212,15 @@ class NSGA2Optimizer:
 
         for _gen in range(1, self.config.generations + 1):
             gen_start_time = time.perf_counter()
-            # print("population at start", pop )
-            offspring = tools.selBest(pop, int(len(pop)*self.config.crossover_prob))# .selTournamentDCD(pop, int(len(pop)))
+            # Standard NSGA-II variation: as many offspring as parents; crossover per pair with
+            # crossover_prob, mutation per individual with mutation_prob.
+            offspring = self.toolbox.select_parents(pop, len(pop))
             offspring = list(map(self.toolbox.clone, offspring))
-            # print("pop after", pop)
-            # print("offspring at start", offspring)
-            # exit()
-            # print("pop fit", pop[0].fitness )
-            # print("pop crwoding dist", pop[0].fitness.crowding_dist )
 
             for c1, c2 in zip(offspring[::2], offspring[1::2]):
-                self.toolbox.mate(c1, c2)
-                del c1.fitness.values, c2.fitness.values
-            # print("offspring after mating", offspring)
-            # print(offspring)
+                if random.random() <= self.config.crossover_prob:
+                    self.toolbox.mate(c1, c2)
+                    del c1.fitness.values, c2.fitness.values
 
             for mutant in offspring:
                 if random.random() <= self.config.mutation_prob:
