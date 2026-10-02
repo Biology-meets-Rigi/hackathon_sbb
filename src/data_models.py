@@ -72,8 +72,16 @@ def condition_class_to_score(condition_class: float) -> float:
     return 1.0 - (c - CONDITION_CLASS_BEST) * 0.2
 
 
+def _check_unique_ids(df: pd.DataFrame, column: str, path: str) -> None:
+    """Duplicate ids would silently overwrite each other in the id-keyed dicts."""
+    dupes = sorted(df.loc[df[column].duplicated(), column].astype(str).unique())
+    if dupes:
+        raise ValueError(f"{path}: duplicate {column} values {dupes}")
+
+
 def load_nodes(path: str) -> Dict[str, Node]:
     df = pd.read_csv(path)
+    _check_unique_ids(df, "node_id", path)
     nodes: Dict[str, Node] = {}
     for _, row in df.iterrows():
         nodes[str(row["node_id"])] = Node(
@@ -86,6 +94,7 @@ def load_nodes(path: str) -> Dict[str, Node]:
 
 def load_edges(path: str) -> Dict[str, Edge]:
     df = pd.read_csv(path)
+    _check_unique_ids(df, "edge_id", path)
     edges: Dict[str, Edge] = {}
     for _, row in df.iterrows():
         bidirectional = bool(row.get("bidirectional", True))
@@ -104,6 +113,7 @@ def load_edges(path: str) -> Dict[str, Edge]:
 
 def load_assets(path: str) -> Dict[str, Asset]:
     df = pd.read_csv(path)
+    _check_unique_ids(df, "asset_id", path)
     assets: Dict[str, Asset] = {}
     for _, row in df.iterrows():
         assets[str(row["asset_id"])] = Asset(
