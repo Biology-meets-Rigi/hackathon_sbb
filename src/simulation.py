@@ -11,6 +11,12 @@ from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
 
 # Simulation time unit is hours; maintenance durations are given in half-days (12 h shifts).
 HOURS_PER_HALF_DAY = 12.0
+# Each 24 h cycle is split like passenger_flows_day.csv: [0, 12) day, [12, 24) night.
+# capacity_at_day / capacity_at_night are passengers per such 12 h period.
+DAY_PERIOD_END_HOUR = 12.0
+# Capacity blockers are served before waiting passengers when the usable capacity drops.
+CAPACITY_BLOCK_PRIORITY = 0
+PASSENGER_PRIORITY = 1
 
 
 def maintenance_duration_hours(asset: Asset) -> float:
@@ -96,8 +102,8 @@ class NetworkGraph:
 class NetworkSimulator:
     """
     Simpy-based network simulation:
-    - Edge capacities are modeled using simpy.Resource.
-    - Maintenance reduces capacity and increases travel time (slowdown).
+    - Edge capacities are modeled using simpy.PriorityResource (one slot = one passenger on the edge).
+    - Usable capacity follows day/night; maintenance reduces it and increases travel time (slowdown).
     - Asset condition degrades with time and usage (edge traversals).
     """
 
@@ -139,11 +145,15 @@ class NetworkSimulator:
         for asset_id, asset in assets.items():
             self.edge_assets[asset.edge_id].append(asset_id)
 
-        # Edge capacity resources
-        self.edge_resources: Dict[str, simpy.Resource] = {}
+        # Edge capacity resources, sized for the larger period. A controller per edge blocks
+        # slots so the usable capacity follows day/night and maintenance.
+        self.edge_slots: Dict[str, Tuple[int, int]] = {}  # (day, night)
+        self.edge_resources: Dict[str, simpy.PriorityResource] = {}
         for edge_id, edge in edges.items():
-            cap = max(int(edge.capacity_at_day), 1) # TODO NAcht
-            self.edge_resources[edge_id] = simpy.Resource(self.env, capacity=cap)
+            day = self._slots(edge.capacity_at_day, edge)
+            night = self._slots(edge.capacity_at_night, edge)
+            self.edge_slots[edge_id] = (day, night)
+            self.edge_resources[edge_id] = simpy.PriorityResource(self.env, capacity=max(day, night))
 
         # Condition state
         self.asset_last_maintenance: Dict[str, float] = {k: 0.0 for k in assets}
@@ -175,6 +185,49 @@ class NetworkSimulator:
     def _is_under_maintenance(self, asset_id: str, t: float) -> bool:
         w = self.maintenance_windows.get(asset_id)
         return (w is not None) and (w.start_hour <= t < w.end_hour)
+
+    def _edge_under_maintenance(self, edge_id: str, t: float) -> bool:
+        return any(self._is_under_maintenance(a, t) for a in self.edge_assets[edge_id])
+
+    @staticmethod
+    def _slots(capacity_per_period: float, edge: Edge) -> int:
+        """Concurrent passengers on the edge for a given 12 h capacity (Little's law: rate * time)."""
+        per_hour = float(capacity_per_period) / HOURS_PER_HALF_DAY
+        return max(1, int(round(per_hour * edge.base_travel_time_min / 60.0)))
+
+    def _effective_slots(self, edge_id: str, t: float) -> int:
+        day, night = self.edge_slots[edge_id]
+        slots = day if (t % 24.0) < DAY_PERIOD_END_HOUR else night
+        if self._edge_under_maintenance(edge_id, t):
+            slots = max(1, int(round(slots * self.maintenance_capacity_factor)))
+        return slots
+
+    def _capacity_controller(self, edge_id: str) -> Generator[simpy.events.Timeout, None, None]:
+        """Hold (capacity - effective slots) on the edge; adjusted at day/night and maintenance changes."""
+        resource = self.edge_resources[edge_id]
+        change_points = {
+            k * HOURS_PER_HALF_DAY for k in range(int(self.horizon_hours // HOURS_PER_HALF_DAY) + 1)
+        }
+        for asset_id in self.edge_assets[edge_id]:
+            w = self.maintenance_windows.get(asset_id)
+            if w is not None:
+                change_points.update((w.start_hour, w.end_hour))
+
+        held: List[simpy.resources.resource.PriorityRequest] = []
+        for t in sorted(change_points):
+            if t >= self.horizon_hours:
+                break
+            yield self.env.timeout(t - self.env.now)
+            target = resource.capacity - self._effective_slots(edge_id, t)
+            while len(held) < target:
+                # Not yielded: granted as soon as passengers free a slot, ahead of waiting passengers
+                held.append(resource.request(priority=CAPACITY_BLOCK_PRIORITY))
+            while len(held) > target:
+                req = held.pop()
+                if req.triggered:
+                    resource.release(req)
+                else:
+                    req.cancel()
 
     def _get_blocked_edges(self, current_time: float) -> Set[str]:
         """
@@ -216,22 +269,16 @@ class NetworkSimulator:
             c = min(c, self._asset_condition(asset_id, t))
         return c
 
+    def _edge_travel_time(self, edge_id: str, t: float) -> float:
+        """Base time * (1 + (1 - condition)), with extra slowdown if any asset on the edge is under maintenance."""
+        slowdown = 1.0 + (1.0 - self._edge_condition(edge_id, t))
+        if self._edge_under_maintenance(edge_id, t):
+            slowdown *= self.maintenance_slowdown_factor
+        return (self.edges[edge_id].base_travel_time_min / 60.0) * slowdown
+
     def _edge_weight_for_routing(self, t: float) -> Dict[str, float]:
-        """
-        Provide time-dependent edge weights to the router.
-        Approximate: base time * (1 + (1 - condition)) and add maintenance slowdown if any asset under maintenance.
-        """
-        weights: Dict[str, float] = {}
-        for edge_id, edge in self.edges.items():
-            edge_cond = self._edge_condition(edge_id, t)
-            slowdown = 1.0 + (1.0 - edge_cond)
-
-            # If any asset on edge under maintenance, extra slowdown
-            if any(self._is_under_maintenance(a, t) for a in self.edge_assets[edge_id]):
-                slowdown *= self.maintenance_slowdown_factor
-
-            weights[edge_id] = (edge.base_travel_time_min / 60.0) * slowdown
-        return weights
+        """Provide time-dependent edge weights to the router."""
+        return {edge_id: self._edge_travel_time(edge_id, t) for edge_id in self.edges}
 
     def _sample_conditions(self) -> Generator[simpy.events.Timeout, None, None]:
         while self.env.now <= self.horizon_hours:
@@ -258,45 +305,17 @@ class NetworkSimulator:
 
     def _traverse_edge(self, edge_id: str) -> Generator[simpy.events.Timeout, None, None]:
         """
-        Traverse an edge under capacity constraints.
-        We model capacity as concurrent slots; maintenance reduces effective capacity by holding slots.
+        Traverse an edge under capacity constraints: wait for one free slot, hold it for the travel time.
+        Reduced capacity (night, maintenance) is enforced by the edge's capacity controller.
         """
-        edge = self.edges[edge_id]
-        resource = self.edge_resources[edge_id]
+        with self.edge_resources[edge_id].request(priority=PASSENGER_PRIORITY) as req:
+            yield req
+            travel_time = self._edge_travel_time(edge_id, self.env.now)
 
-        # Maintenance capacity reduction by occupying some slots.
-        # For simplicity: if any asset under maintenance -> reduce effective capacity by reserving slots.
-        maintenance_active = any(self._is_under_maintenance(a, self.env.now) for a in self.edge_assets[edge_id])
-        reserved = 0
-        if maintenance_active:
-            cap = max(resource.capacity, 1)
-            reserved = max(0, int(round(cap * (1.0 - self.maintenance_capacity_factor))))
-        reserved_reqs = []
-        for _ in range(reserved):
-            req = resource.request()
-            reserved_reqs.append(req)
-            yield req  # occupy slots
+            # Usage degradation
+            self._degrade_assets_by_usage(edge_id)
 
-        # Now request one slot for traversal
-        req = resource.request()
-        yield req
-
-        # Compute travel time with condition + maintenance slowdown
-        edge_cond = self._edge_condition(edge_id, self.env.now)
-        slowdown = 1.0 + (1.0 - edge_cond)
-        if maintenance_active:
-            slowdown *= self.maintenance_slowdown_factor
-        travel_time = (edge.base_travel_time_min / 60.0) * slowdown
-
-        # Usage degradation
-        self._degrade_assets_by_usage(edge_id)
-
-        yield self.env.timeout(travel_time)
-
-        # release traversal slot and reserved slots
-        resource.release(req)
-        for r in reserved_reqs:
-            resource.release(r)
+            yield self.env.timeout(travel_time)
 
     def _passenger_trip(self, flow: PassengerFlow, start_time: float) -> Generator[simpy.events.Timeout, None, None]:
         self.generated_trips += 1
@@ -365,6 +384,8 @@ class NetworkSimulator:
             day_start += 24.0
 
     def run(self) -> SimulationResult:
+        for edge_id in self.edges:
+            self.env.process(self._capacity_controller(edge_id))
         for flow in self.flows:
             self.env.process(self._passenger_source(flow))
         self.env.process(self._sample_conditions())
