@@ -105,3 +105,42 @@ def test_route_choice_avoids_works(network_data):
         shares[label] = detour / (direct + detour)
     assert shares["works"] > shares["no works"]
 
+
+def _fake_request(vehicle, origin="src_A", target="station_B"):
+    from types import SimpleNamespace
+
+    def locatable(lid, xy):
+        return SimpleNamespace(data=SimpleNamespace(ID=lid), get_location=lambda: xy)
+
+    return SimpleNamespace(resource=vehicle, origin=locatable(origin, [0.0, 0.0]), target=locatable(target, [9.0, 9.0]))
+
+
+def _fake_vehicle(name, location, queued_ods=(), free_capacity=0, seats=4):
+    from types import SimpleNamespace
+
+    vehicle = SimpleNamespace(
+        name=name,
+        data=SimpleNamespace(ID=name, capacity=seats),
+        get_location=lambda: location,
+        get_free_capacity=lambda: free_capacity,
+    )
+    vehicle.controller = SimpleNamespace(requests=[])
+    vehicle.controller.requests = [_fake_request(vehicle, *od) for od in queued_ods]
+    return vehicle
+
+
+def test_dispatch_heuristic_order():
+    from rail_prodsys.runtime import vehicle_dispatch_heuristic
+
+    idle_far = _fake_vehicle("idle_far", [500.0, 0.0], free_capacity=4)
+    idle_near = _fake_vehicle("idle_near", [10.0, 0.0], free_capacity=4)
+    joinable = _fake_vehicle("joinable", [0.0, 0.0], queued_ods=[("src_A", "station_B")] * 2)
+    full_lot = _fake_vehicle("full_lot", [0.0, 0.0], queued_ods=[("src_A", "station_B")] * 4)
+    other = _fake_vehicle("other", [0.0, 0.0], queued_ods=[("src_C", "station_B")])
+    requests = [_fake_request(v) for v in (other, full_lot, joinable, idle_far, idle_near)]
+    vehicle_dispatch_heuristic(requests)
+    assert [r.resource.name for r in requests] == ["idle_near", "idle_far", "joinable", "other", "full_lot"]
+
+    busy = [_fake_request(v) for v in (other, full_lot, joinable)]
+    vehicle_dispatch_heuristic(busy)
+    assert busy[0].resource.name == "joinable"

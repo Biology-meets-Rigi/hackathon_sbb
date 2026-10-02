@@ -21,6 +21,7 @@ from rail_prodsys.runtime import (
     InfrastructureCoupling,
     PassengerDispatcher,
     RouteChooser,
+    vehicle_dispatch_heuristic,
 )
 
 sim.VERBOSE = 0  # no tqdm progress bar per run
@@ -82,6 +83,7 @@ def run_prodsys(
     data.seed = int(rng.integers(0, 2**31 - 1))
     runner = Runner(production_system_data=data)
     runner.initialize_simulation()
+    runner.product_factory.routing_heuristic_override = vehicle_dispatch_heuristic
     coupling = InfrastructureCoupling(runner, network, infra)
     coupling.start(horizon_minutes)
     dispatcher = PassengerDispatcher(runner, network, flows, rng, choose_route=RouteChooser(network, coupling))

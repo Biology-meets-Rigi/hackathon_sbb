@@ -10,6 +10,7 @@ every hop is slowed down by the edge's condition / maintenance factor.
 """
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from typing import Callable, Dict, Generator, List, Optional, Tuple
 
@@ -24,6 +25,38 @@ MINUTES_PER_DAY = 24 * 60.0
 
 # (origin, destination, now in minutes) -> chosen route variant
 RouteChooser = Callable[[str, str, float], RouteVariant]
+
+
+def _locatable_id(locatable) -> Optional[str]:
+    data = getattr(locatable, "data", None)
+    return getattr(data, "ID", None)
+
+
+def vehicle_dispatch_heuristic(possible_requests: list) -> None:
+    """
+    Routing heuristic for products (set as product_factory.routing_heuristic_override). prodsys' own
+    heuristics are random for pure transport resources, and a lot (Sammelfahrt) only forms from the
+    requests queued at one vehicle. Preference order for a transport request:
+      1. an idle vehicle, nearest to the pick-up first (no waiting when demand is low),
+      2. a busy vehicle that already queues requests of the same origin/target with seats left
+         (join that lot, so vehicles run full when demand is high),
+      3. the vehicle with the fewest queued requests, nearest first.
+    """
+
+    def key(request) -> Tuple[int, float, float]:
+        vehicle = request.resource
+        queue = vehicle.controller.requests
+        origin = getattr(request, "origin", None)
+        distance = math.dist(vehicle.get_location(), origin.get_location()) if origin is not None else 0.0
+        if not queue and vehicle.get_free_capacity() > 0:
+            return 0, distance, 0.0
+        od = (_locatable_id(origin), _locatable_id(getattr(request, "target", None)))
+        same_od = sum(1 for q in queue if (_locatable_id(q.origin), _locatable_id(q.target)) == od)
+        if 0 < same_od % vehicle.data.capacity:
+            return 1, -same_od, distance
+        return 2, len(queue), distance
+
+    possible_requests.sort(key=key)
 
 
 class PassengerDispatcher:
