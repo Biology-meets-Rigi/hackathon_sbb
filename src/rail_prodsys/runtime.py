@@ -159,3 +159,34 @@ class InfrastructureCoupling:
         if added and not self.router.resource_got_free.triggered:
             self.router.resource_got_free.succeed()  # route requests that waited for a vehicle
         self.availability_log.append((self.env.now, line.edge_id, count))
+
+
+class RouteChooser:
+    """
+    Route choice at release (Umrouten): the variant with the smallest expected travel time.
+    Per leg: travel time with the edge factor, half a headway of the vehicles in service, and the
+    time to clear the groups already queued at the line's vehicles; plus the dwell time per transfer.
+    """
+
+    def __init__(self, network: RailNetwork, coupling: InfrastructureCoupling) -> None:
+        self.network = network
+        self.coupling = coupling
+
+    def expected_minutes(self, variant: RouteVariant, now: float) -> float:
+        t_hours = now / 60.0
+        minutes = self.network.config.dwell_minutes * len(variant.transfer_stations)
+        for edge_id in variant.edges:
+            line = self.network.lines[edge_id]
+            travel = line.base_minutes * self.coupling.infra.edge_slowdown(edge_id, t_hours)
+            round_trip = 2.0 * travel
+            in_service = self.coupling.vehicles_in_service(line, t_hours)
+            queued = sum(len(v.controller.requests) for v in self.coupling.vehicles[edge_id])
+            groups_per_minute = in_service * line.seats / round_trip
+            minutes += travel + round_trip / (2.0 * in_service) + queued / groups_per_minute
+        return minutes
+
+    def __call__(self, origin: str, destination: str, now: float) -> RouteVariant:
+        variants = self.network.routes[(origin, destination)]
+        if len(variants) == 1:
+            return variants[0]
+        return min(variants, key=lambda v: self.expected_minutes(v, now))

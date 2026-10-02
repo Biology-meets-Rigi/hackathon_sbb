@@ -6,6 +6,7 @@ prodsys Runner on a copy of it, attaches the runtime coupling and derives the ob
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -16,7 +17,11 @@ from prodsys.simulation.runner import Runner
 from assets import InfrastructureState
 from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
 from rail_prodsys.network import RailModelConfig, RailNetwork, build_network
-from rail_prodsys.runtime import InfrastructureCoupling, PassengerDispatcher
+from rail_prodsys.runtime import (
+    InfrastructureCoupling,
+    PassengerDispatcher,
+    RouteChooser,
+)
 
 sim.VERBOSE = 0  # no tqdm progress bar per run
 prodsys.set_logging("WARNING")
@@ -33,6 +38,18 @@ def get_network(
     return _NETWORK_CACHE[key]
 
 
+@dataclass
+class ProdsysRun:
+    """A finished prodsys simulation with its runtime coupling (for objectives and detailed KPIs)."""
+
+    result: SimulationResult
+    network: RailNetwork
+    infra: InfrastructureState
+    runner: Runner
+    coupling: InfrastructureCoupling
+    dispatcher: PassengerDispatcher
+
+
 def simulate_schedule_prodsys(
     nodes: Dict[str, Node],
     edges: Dict[str, Edge],
@@ -43,6 +60,19 @@ def simulate_schedule_prodsys(
     horizon_hours: float = 24.0,
     config: Optional[RailModelConfig] = None,
 ) -> SimulationResult:
+    return run_prodsys(nodes, edges, assets, flows, schedule, rng, horizon_hours, config).result
+
+
+def run_prodsys(
+    nodes: Dict[str, Node],
+    edges: Dict[str, Edge],
+    assets: Dict[str, Asset],
+    flows: List[PassengerFlow],
+    schedule: Dict[str, float],
+    rng: np.random.Generator,
+    horizon_hours: float = 24.0,
+    config: Optional[RailModelConfig] = None,
+) -> ProdsysRun:
     config = config or RailModelConfig()
     network = get_network(nodes, edges, flows, config)
     infra = InfrastructureState(assets, schedule, horizon_hours)
@@ -54,14 +84,14 @@ def simulate_schedule_prodsys(
     runner.initialize_simulation()
     coupling = InfrastructureCoupling(runner, network, infra)
     coupling.start(horizon_minutes)
-    dispatcher = PassengerDispatcher(runner, network, flows, rng)
+    dispatcher = PassengerDispatcher(runner, network, flows, rng, choose_route=RouteChooser(network, coupling))
     dispatcher.start(horizon_minutes)
     runner.run(horizon_minutes)
 
     group = config.group_size
     travel_minutes = [arrival - release for _, release, arrival in dispatcher.trips]
     avg_travel_hours = float(np.mean(travel_minutes)) / 60.0 if travel_minutes else 0.0
-    return SimulationResult(
+    result = SimulationResult(
         avg_condition=infra.average_condition(),
         avg_travel_time=avg_travel_hours,
         served_trips=len(dispatcher.trips) * group,
@@ -70,3 +100,4 @@ def simulate_schedule_prodsys(
         total_cost=infra.total_cost(),
         schedule={a: w.start_hour for a, w in infra.windows.items()},
     )
+    return ProdsysRun(result, network, infra, runner, coupling, dispatcher)

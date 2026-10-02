@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from assets import InfrastructureState
-from rail_prodsys.backend import get_network, simulate_schedule_prodsys
+from rail_prodsys.backend import get_network, run_prodsys, simulate_schedule_prodsys
 from rail_prodsys.network import RailModelConfig, find_route_variants
 
 HORIZON = 14.0  # hours: short prodsys runs, but long enough for a 12 h job
@@ -92,3 +92,16 @@ def test_maintenance_slows_down_trips(network_data):
     )
     assert works.generated_trips == no_works.generated_trips  # same demand (common random numbers)
     assert works.avg_travel_time > no_works.avg_travel_time
+
+
+def test_route_choice_avoids_works(network_data):
+    """Works on the direct line Luzern-Kuessnacht shift passengers to the detour via Weggis."""
+    nodes, edges, assets, flows = network_data
+    shares = {}
+    for label, plan in (("no works", {}), ("works", {"Luzern_Weiche_1": 1.0})):
+        run = run_prodsys(nodes, edges, assets, flows, plan, np.random.default_rng(5), HORIZON)
+        counts = run.dispatcher.route_counts
+        direct, detour = counts["pax_Luzern_Küsnacht_am_Rigi_r0"], counts["pax_Luzern_Küsnacht_am_Rigi_r1"]
+        shares[label] = detour / (direct + detour)
+    assert shares["works"] > shares["no works"]
+

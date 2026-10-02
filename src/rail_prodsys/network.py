@@ -37,8 +37,8 @@ class RailModelConfig:
     dwell_minutes: float = 2.0  # transfer / alighting at a station
     walk_speed_m_per_min: float = 80.0  # station -> exit
     station_capacity: int = 50  # passenger groups processed in parallel at a station
-    max_route_variants: int = 1  # alternative routes per origin/destination pair
-    max_detour_factor: float = 2.0  # drop variants slower than factor * fastest variant
+    max_route_variants: int = 3  # alternative routes per origin/destination pair
+    max_detour_factor: float = 3.0  # drop variants slower than factor * fastest variant (base times)
 
 
 @dataclass
