@@ -7,6 +7,7 @@ import pandas as pd
 
 from data_models import load_assets, load_edges, load_nodes, load_passenger_flows
 from ga import GAConfig, NSGA2Optimizer
+from simulation import maintenance_fits_horizon
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,8 +34,36 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def save_schedule(path: str, schedule: dict) -> None:
-    df = pd.DataFrame([{"asset_id": aid, "start_hour": sh} for aid, sh in schedule.items()]).sort_values("asset_id")
+def deferred_assets(schedule: dict, assets: dict, horizon_hours: float) -> list:
+    """Assets whose maintenance does not finish within the horizon (not executed in this plan)."""
+    return sorted(aid for aid, sh in schedule.items() if not maintenance_fits_horizon(assets[aid], sh, horizon_hours))
+
+
+def build_summary(gen: int, schedule: dict, metrics: tuple, assets: dict, horizon_hours: float) -> dict:
+    return {
+        "generation": int(gen),
+        "horizon_hours": float(horizon_hours),
+        "best_schedule": schedule,
+        "deferred_assets": deferred_assets(schedule, assets, horizon_hours),
+        "objectives": {
+            "served_adjusted": metrics[0],
+            "avg_condition": metrics[1],
+            "avg_travel_time": metrics[2],
+            "total_cost": metrics[3],
+        },
+        "notes": [
+            "Objectives are true multi-objective (NSGA-II): maximize served, condition; minimize travel time, cost.",
+            "Edge capacity modeled via simpy.Resource; maintenance reduces capacity & increases travel time.",
+            "Asset condition degrades with time and usage (usage_degradation_per_passage).",
+            "start_hour is in hours since horizon start; jobs not finishing within the horizon are deferred.",
+        ],
+    }
+
+
+def save_schedule(path: str, schedule: dict, deferred: list) -> None:
+    df = pd.DataFrame(
+        [{"asset_id": aid, "start_hour": sh, "executed": aid not in deferred} for aid, sh in schedule.items()]
+    ).sort_values("asset_id")
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
 
@@ -78,21 +107,7 @@ def main() -> None:
     summary_path = Path(args.output).parent / "summary.json"
 
     def _write_summary(gen: int, schedule: dict, metrics: tuple, _pareto) -> None:
-        summary = {
-            "generation": int(gen),
-            "best_schedule": schedule,
-            "objectives": {
-                "served_adjusted": metrics[0],
-                "avg_condition": metrics[1],
-                "avg_travel_time": metrics[2],
-                "total_cost": metrics[3],
-            },
-            "notes": [
-                "Objectives are true multi-objective (NSGA-II): maximize served, condition; minimize travel time, cost.",
-                "Edge capacity modeled via simpy.Resource; maintenance reduces capacity & increases travel time.",
-                "Asset condition degrades with time and usage (usage_degradation_per_passage).",
-            ],
-        }
+        summary = build_summary(gen, schedule, metrics, assets, config.horizon_hours)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
@@ -109,25 +124,11 @@ def main() -> None:
         print(f"[DEBUG] failed to write initial progress.json: {e}", flush=True)
     best_schedule, best_metrics, pareto = optimizer.run(progress_cb=_write_summary)
 
-    save_schedule(args.output, best_schedule)
+    final_summary = build_summary(config.generations, best_schedule, best_metrics, assets, config.horizon_hours)
+    save_schedule(args.output, best_schedule, final_summary["deferred_assets"])
     save_pareto(args.pareto_out, pareto)
 
     # Also print + persist final summary
-    final_summary = {
-        "generation": int(config.generations),
-        "best_schedule": best_schedule,
-        "objectives": {
-            "served_adjusted": best_metrics[0],
-            "avg_condition": best_metrics[1],
-            "avg_travel_time": best_metrics[2],
-            "total_cost": best_metrics[3],
-        },
-        "notes": [
-            "Objectives are true multi-objective (NSGA-II): maximize served, condition; minimize travel time, cost.",
-            "Edge capacity modeled via simpy.Resource; maintenance reduces capacity & increases travel time.",
-            "Asset condition degrades with time and usage (usage_degradation_per_passage).",
-        ],
-    }
     print(json.dumps(final_summary, indent=2))
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(final_summary, f, indent=2)

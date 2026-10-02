@@ -877,6 +877,8 @@ with col_right:
 # Assets to show. We'll derive start day from the best_result values.
 assets = list(best_result["best_schedule"].keys())
 start_values = best_result["best_schedule"]
+# Jobs that do not finish within the horizon are deferred (not executed in this plan)
+deferred_assets = set(best_result.get("deferred_assets", []))
 
 # Base date for the visualization
 base_date = date(2026, 1, 1)
@@ -930,6 +932,7 @@ for asset in assets:
             "End": end_dt,
             "raw_start": float(raw_start),
             "duration_days": float(duration_days),
+            "Status": "deferred" if asset in deferred_assets else "planned",
         }
     )
 
@@ -948,7 +951,7 @@ df_schedule_plot["End"] = df_schedule_plot["End"].dt.to_pydatetime()
 
 # Create a Gantt-like timeline (manual) to avoid datetime/timedelta JSON issues.
 # We plot in "days since base_date" and format tick labels ourselves.
-df_bar = df_schedule.copy()
+df_bar = df_schedule[df_schedule["Status"] == "planned"].copy()
 df_bar["start_day"] = (df_bar["Start"] - pd.Timestamp(base_date)) / pd.Timedelta(days=1)
 # Use the computed duration (may be fractional) rather than re-deriving it from timestamps.
 df_bar["duration_days"] = df_bar.get("duration_days", DEFAULT_DURATION_DAYS).astype(float)
@@ -1001,7 +1004,7 @@ def _tick_label(day_offset: int) -> str:
     d = base_date + timedelta(days=int(day_offset))
     return d.isoformat()
 
-max_end = float((df_bar["start_day"] + df_bar["duration_days"]).max())
+max_end = float((df_bar["start_day"] + df_bar["duration_days"]).max()) if not df_bar.empty else 0.0
 tick_step = 7
 max_tick = int(math.ceil(max_end / tick_step) * tick_step)
 tickvals = list(range(0, max_tick + tick_step, tick_step))
@@ -1024,6 +1027,8 @@ fig_timeline.update_xaxes(title_text="Date", tickmode="array", tickvals=tickvals
 
 with col_right:
     st.plotly_chart(fig_timeline, width="stretch")
+    if deferred_assets:
+        st.caption(f"Deferred (not finished within horizon): {', '.join(sorted(deferred_assets))}")
 
 # Objectives: show each objective as its own bar chart beneath the timeline
 with col_right:

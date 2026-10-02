@@ -17,6 +17,11 @@ def maintenance_duration_hours(asset: Asset) -> float:
     return float(asset.maintenance_duration_half_days) * HOURS_PER_HALF_DAY
 
 
+def maintenance_fits_horizon(asset: Asset, start_hour: float, horizon_hours: float) -> bool:
+    """Jobs that would not finish within the horizon are deferred to a later planning period."""
+    return float(start_hour) + maintenance_duration_hours(asset) <= float(horizon_hours)
+
+
 @dataclass
 class MaintenanceWindow:
     start_hour: float
@@ -118,10 +123,12 @@ class NetworkSimulator:
         self.env = simpy.Environment()
         self.graph = NetworkGraph.from_data(nodes, edges)
 
-        # Maintenance windows
+        # Maintenance windows (deferred jobs get no window and cost nothing in this horizon)
         self.maintenance_windows: Dict[str, MaintenanceWindow] = {}
         for asset_id, start in maintenance_plan.items():
             asset = assets[asset_id]
+            if not maintenance_fits_horizon(asset, start, horizon_hours):
+                continue
             self.maintenance_windows[asset_id] = MaintenanceWindow(
                 start_hour=float(start),
                 end_hour=float(start) + maintenance_duration_hours(asset),
@@ -156,11 +163,11 @@ class NetworkSimulator:
         self.generated_trips = 0
         self.condition_samples = 0
         self.condition_sum = 0.0
-        self.total_cost = self._compute_cost(maintenance_plan)
+        self.total_cost = self._compute_cost()
 
-    def _compute_cost(self, plan: Dict[str, float]) -> float:
+    def _compute_cost(self) -> float:
         cost = 0.0
-        for asset_id in plan:
+        for asset_id in self.maintenance_windows:
             asset = self.assets[asset_id]
             cost += asset.maintenance_cost_per_unit * asset.maintenance_duration_half_days
         return cost

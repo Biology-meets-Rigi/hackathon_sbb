@@ -8,7 +8,7 @@ import numpy as np
 from deap import base, creator, tools
 
 from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
-from simulation import maintenance_duration_hours, simulate_schedule
+from simulation import simulate_schedule
 
 import logging 
 import time
@@ -106,15 +106,11 @@ class NSGA2Optimizer:
     def _random_start(self) -> float:
         return random.uniform(0.0, self.config.horizon_hours)
 
-    def _max_start(self, idx: int) -> float:
-        asset_id = self.asset_ids[idx % len(self.asset_ids)]
-        asset = self.assets[asset_id]
-        return max(0.0, self.config.horizon_hours - maintenance_duration_hours(asset))
-
     def _bounds_correction(self, individual: List[float]) -> None:
+        # Genes may exceed horizon - duration: such a job does not finish in the horizon and
+        # is deferred (no cost, no condition reset). That lets the GA trade cost against condition.
         for i in range(len(individual)):
-            upper = self._max_start(i)
-            individual[i] = max(0.0, min(upper, float(individual[i])))
+            individual[i] = max(0.0, min(self.config.horizon_hours, float(individual[i])))
 
     def _evaluate(self, individual: List[float]):
         t0 = time.perf_counter()
