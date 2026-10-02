@@ -7,7 +7,7 @@ import pandas as pd
 
 from data_models import load_assets, load_edges, load_nodes, load_passenger_flows
 from ga import GAConfig, NSGA2Optimizer
-from simulation import maintenance_fits_horizon
+from assets import maintenance_fits_horizon
 
 
 def parse_args() -> argparse.Namespace:

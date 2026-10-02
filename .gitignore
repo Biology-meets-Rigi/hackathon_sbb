@@ -1,2 +1,5 @@
 src/__pycache__/*
 output/best_schedule.csv
+.pytest_cache/
+tests/__pycache__/
+src/rail_prodsys/__pycache__/

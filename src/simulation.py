@@ -7,25 +7,16 @@ from typing import Dict, Generator, List, Optional, Set, Tuple
 import numpy as np
 import simpy
 
+from assets import HOURS_PER_HALF_DAY, maintenance_duration_hours, maintenance_fits_horizon
 from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
 
-# Simulation time unit is hours; maintenance durations are given in half-days (12 h shifts).
-HOURS_PER_HALF_DAY = 12.0
+# Simulation time unit is hours.
 # Each 24 h cycle is split like passenger_flows_day.csv: [0, 12) day, [12, 24) night.
 # capacity_at_day / capacity_at_night are passengers per such 12 h period.
 DAY_PERIOD_END_HOUR = 12.0
 # Capacity blockers are served before waiting passengers when the usable capacity drops.
 CAPACITY_BLOCK_PRIORITY = 0
 PASSENGER_PRIORITY = 1
-
-
-def maintenance_duration_hours(asset: Asset) -> float:
-    return float(asset.maintenance_duration_half_days) * HOURS_PER_HALF_DAY
-
-
-def maintenance_fits_horizon(asset: Asset, start_hour: float, horizon_hours: float) -> bool:
-    """Jobs that would not finish within the horizon are deferred to a later planning period."""
-    return float(start_hour) + maintenance_duration_hours(asset) <= float(horizon_hours)
 
 
 @dataclass
