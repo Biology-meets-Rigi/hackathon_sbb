@@ -30,14 +30,33 @@ class GAConfig:
     selection_weights: Tuple[float, float, float] = (0.3, 0.4, 0.3)
     # Parallel simulations: 0 = all CPU cores, 1 = sequential in this process
     workers: int = 0
+    # Simulation backend: "prodsys" (rail network as prodsys production system) or "simpy" (own model)
+    backend: str = "prodsys"
+    # prodsys backend: passengers per simulated product (larger = faster, coarser)
+    group_size: int = 10
 
+
+BACKENDS = ("prodsys", "simpy")
 
 # Simulation inputs per process (set by _init_worker in the main process and in every pool worker)
 _WORKER: Dict[str, object] = {}
 
 
-def _init_worker(nodes, edges, assets, flows, horizon_hours: float, seed: int) -> None:
-    _WORKER.update(nodes=nodes, edges=edges, assets=assets, flows=flows, horizon_hours=horizon_hours, seed=seed)
+def _init_worker(
+    nodes, edges, assets, flows, horizon_hours: float, seed: int, backend: str = "simpy", group_size: int = 10
+) -> None:
+    if backend not in BACKENDS:
+        raise ValueError(f"unknown backend {backend!r}, expected one of {BACKENDS}")
+    _WORKER.update(
+        nodes=nodes,
+        edges=edges,
+        assets=assets,
+        flows=flows,
+        horizon_hours=horizon_hours,
+        seed=seed,
+        backend=backend,
+        group_size=group_size,
+    )
 
 
 def _simulate(schedule: Dict[str, float]) -> Tuple[SimulationResult, float]:
@@ -45,15 +64,14 @@ def _simulate(schedule: Dict[str, float]) -> Tuple[SimulationResult, float]:
     # Common Random Numbers: every schedule sees the same passenger demand realization,
     # so objective differences come from the schedule and not from sampling noise.
     rng = np.random.default_rng(_WORKER["seed"])
-    result = simulate_schedule(
-        _WORKER["nodes"],
-        _WORKER["edges"],
-        _WORKER["assets"],
-        _WORKER["flows"],
-        schedule,
-        rng,
-        _WORKER["horizon_hours"],
-    )
+    args = (_WORKER["nodes"], _WORKER["edges"], _WORKER["assets"], _WORKER["flows"], schedule, rng, _WORKER["horizon_hours"])
+    if _WORKER["backend"] == "prodsys":
+        from rail_prodsys.backend import simulate_schedule_prodsys  # imported lazily: prodsys is heavy
+        from rail_prodsys.network import RailModelConfig
+
+        result = simulate_schedule_prodsys(*args, config=RailModelConfig(group_size=_WORKER["group_size"]))
+    else:
+        result = simulate_schedule(*args)
     return result, time.perf_counter() - t0
 
 
@@ -87,7 +105,9 @@ class NSGA2Optimizer:
         self.base_seed = int(config.seed)
         self.eval_counter = 0
 
-        self._worker_args = (nodes, edges, assets, flows_day, config.horizon_hours, self.base_seed)
+        self._worker_args = (
+            nodes, edges, assets, flows_day, config.horizon_hours, self.base_seed, config.backend, config.group_size
+        )
         _init_worker(*self._worker_args)
         self._pool: Optional[Pool] = None
 

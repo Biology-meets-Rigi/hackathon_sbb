@@ -5,9 +5,24 @@ import json
 from pathlib import Path
 import pandas as pd
 
+import numpy as np
+
 from data_models import load_assets, load_edges, load_nodes, load_passenger_flows
-from ga import GAConfig, NSGA2Optimizer
+from ga import BACKENDS, GAConfig, NSGA2Optimizer
 from assets import maintenance_fits_horizon
+
+BACKEND_NOTES = {
+    "simpy": [
+        "Simulation backend: own SimPy model; edge capacity as simpy slots, passengers routed by expected time.",
+        "Maintenance reduces edge capacity & increases travel time.",
+    ],
+    "prodsys": [
+        "Simulation backend: prodsys (stations = production resources, lines = link transport processes "
+        "with vehicles, passengers = products in groups).",
+        "Maintenance withdraws vehicles of the line (capacity) and slows it down; passengers choose the "
+        "fastest route variant at departure.",
+    ],
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,6 +45,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cx", type=float, default=0.3, help="Crossover")
     parser.add_argument("--mut", type=float, default=0.1, help="Mutation")
     parser.add_argument("--workers", type=int, default=0, help="Parallel simulations (0 = all CPU cores, 1 = sequential)")
+    parser.add_argument("--backend", choices=BACKENDS, default="prodsys", help="Simulation backend")
+    parser.add_argument("--group-size", type=int, default=10, help="prodsys backend: passengers per simulated product")
     parser.add_argument("--output", default="output/best_schedule.csv", help="Output csv for best schedule")
     parser.add_argument("--pareto_out", default="output/pareto_front.csv", help="Output csv for Pareto front")
     return parser.parse_args()
@@ -40,9 +57,10 @@ def deferred_assets(schedule: dict, assets: dict, horizon_hours: float) -> list:
     return sorted(aid for aid, sh in schedule.items() if not maintenance_fits_horizon(assets[aid], sh, horizon_hours))
 
 
-def build_summary(gen: int, schedule: dict, metrics: tuple, assets: dict, horizon_hours: float) -> dict:
+def build_summary(gen: int, schedule: dict, metrics: tuple, assets: dict, horizon_hours: float, backend: str) -> dict:
     return {
         "generation": int(gen),
+        "backend": backend,
         "horizon_hours": float(horizon_hours),
         "best_schedule": schedule,
         "deferred_assets": deferred_assets(schedule, assets, horizon_hours),
@@ -54,8 +72,8 @@ def build_summary(gen: int, schedule: dict, metrics: tuple, assets: dict, horizo
         },
         "notes": [
             "Objectives are true multi-objective (NSGA-II): maximize served, condition; minimize travel time, cost.",
-            "Edge capacity modeled via simpy.Resource; maintenance reduces capacity & increases travel time.",
-            "Asset condition degrades with time and usage (usage_degradation_per_passage).",
+            *BACKEND_NOTES[backend],
+            "Asset condition degrades with time; maintenance renews it (asset layer, src/assets.py).",
             "start_hour is in hours since horizon start; jobs not finishing within the horizon are deferred.",
         ],
     }
@@ -104,13 +122,15 @@ def main() -> None:
         seed=args.seed,
         selection_weights=tuple(args.weights),
         workers=args.workers,
+        backend=args.backend,
+        group_size=args.group_size,
     )
 
     # Write summary.json after each generation
     summary_path = Path(args.output).parent / "summary.json"
 
     def _write_summary(gen: int, schedule: dict, metrics: tuple, _pareto) -> None:
-        summary = build_summary(gen, schedule, metrics, assets, config.horizon_hours)
+        summary = build_summary(gen, schedule, metrics, assets, config.horizon_hours, config.backend)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
@@ -127,7 +147,20 @@ def main() -> None:
         print(f"[DEBUG] failed to write initial progress.json: {e}", flush=True)
     best_schedule, best_metrics, pareto = optimizer.run(progress_cb=_write_summary)
 
-    final_summary = build_summary(config.generations, best_schedule, best_metrics, assets, config.horizon_hours)
+    final_summary = build_summary(
+        config.generations, best_schedule, best_metrics, assets, config.horizon_hours, config.backend
+    )
+    if config.backend == "prodsys":
+        # Re-run the chosen schedule (same seed as in the GA) for detailed prodsys KPIs
+        from rail_prodsys.backend import run_prodsys
+        from rail_prodsys.details import collect_details
+        from rail_prodsys.network import RailModelConfig
+
+        run = run_prodsys(
+            nodes, edges, assets, flows, best_schedule, np.random.default_rng(config.seed),
+            config.horizon_hours, RailModelConfig(group_size=config.group_size),
+        )
+        final_summary["details"] = collect_details(run)
     save_schedule(args.output, best_schedule, final_summary["deferred_assets"])
     save_pareto(args.pareto_out, pareto)
 

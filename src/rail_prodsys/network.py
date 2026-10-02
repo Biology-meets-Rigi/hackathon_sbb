@@ -44,6 +44,7 @@ class RailModelConfig:
 @dataclass
 class Line:
     edge_id: str
+    mode: str
     stations: Tuple[str, str]
     base_minutes: float
     vehicle_ids: List[str]
@@ -215,7 +216,9 @@ def build_network(
             vid = f"veh_{edge_id}_{i}"
             vehicle_res.append(psx.Resource([line_proc], location=station_xy[home], capacity=seats, ID=vid))
             vehicle_ids.append(vid)
-        lines[edge_id] = Line(edge_id, (a, b), float(edge.base_travel_time_min), vehicle_ids, seats, vehicles_day, vehicles_night)
+        lines[edge_id] = Line(
+            edge_id, edge.mode, (a, b), float(edge.base_travel_time_min), vehicle_ids, seats, vehicles_day, vehicles_night
+        )
 
     # Walkways: station -> exits (sinks) of all routes ending there
     walk = psx.DistanceTimeModel(speed=config.walk_speed_m_per_min, reaction_time=0.0, metric="euclidean", ID="t_walk")

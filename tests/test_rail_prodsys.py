@@ -176,3 +176,18 @@ def test_reproducible_across_processes():
         outputs.add(proc.stdout.strip())
     assert len(outputs) == 1, outputs
 
+
+def test_ga_backend_selection(network_data):
+    import ga
+
+    nodes, edges, assets, flows = network_data
+    schedule = {"Luzern_Weiche_1": 1.0}
+    results = {}
+    for backend in ga.BACKENDS:
+        ga._init_worker(nodes, edges, assets, flows, HORIZON, 42, backend=backend, group_size=10)
+        results[backend], _ = ga._simulate(schedule)
+    expected = simulate_schedule_prodsys(nodes, edges, assets, flows, schedule, np.random.default_rng(42), HORIZON)
+    assert results["prodsys"] == expected
+    assert results["simpy"].avg_condition == pytest.approx(expected.avg_condition)  # same asset layer semantics
+    with pytest.raises(ValueError):
+        ga._init_worker(nodes, edges, assets, flows, HORIZON, 42, backend="unknown")
