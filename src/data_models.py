@@ -25,6 +25,8 @@ class Edge:
     mode: str
     capacity_at_day: int
     capacity_at_night: int
+    # Vehicles allowed on the section at the same time (tracks/blocks); None = unlimited
+    track_capacity: Optional[int] = None
 
 
 @dataclass
@@ -110,6 +112,7 @@ def load_edges(path: str) -> Dict[str, Edge]:
             base_travel_time_min=float(row["base_travel_time_min"]),
             capacity_at_day=int(row["capacity_at_day"]),
             capacity_at_night=int(row["capacity_at_night"]),
+            track_capacity=int(row["track_capacity"]) if pd.notna(row.get("track_capacity")) else None,
         )
         edges[edge.edge_id] = edge
     return edges

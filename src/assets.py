@@ -6,8 +6,9 @@ hours since the start of the horizon. Conditions are scores in [min_condition, 1
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -126,6 +127,17 @@ class InfrastructureState:
 
     def edge_capacity_factor(self, edge_id: str, t: float) -> float:
         return self.capacity_factor if self.edge_under_maintenance(edge_id, t) else 1.0
+
+    def edge_track_capacity(self, edge_id: str, track_capacity: Optional[int], t: float) -> Optional[int]:
+        """
+        Vehicles allowed on the section at time t: works block tracks, floor(capacity * factor).
+        A single-track section is closed during works. None = unlimited (no track capacity given).
+        """
+        if track_capacity is None:
+            return None
+        if self.edge_under_maintenance(edge_id, t):
+            return int(math.floor(track_capacity * self.capacity_factor + 1e-9))
+        return int(track_capacity)
 
     def edge_change_points(self, edge_id: str) -> List[float]:
         """Sorted maintenance start/end times on the edge (where capacity and slowdown jump)."""

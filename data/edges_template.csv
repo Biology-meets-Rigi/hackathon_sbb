@@ -1,7 +1,7 @@
-edge_id,start_node,end_node,base_travel_time_min,mode,capacity_at_day,capacity_at_night
-W_L_S,Weggis,Luzern,6,Schiff,5400,2700
-L_K_Z,Luzern,Küsnacht_am_Rigi,15,Zug,5136,2568
-K_A_Z,Küsnacht_am_Rigi,Arth_Goldau,10,Zug,3840,1920
-R_A_Z,Rigi,Arth_Goldau,12,Zug,1200,400
-W_R_L,Weggis,Rigi,13,Luftseilbahn,1824,608
-W_K_B,Weggis,Küsnacht_am_Rigi,9,Bus,1500,600
+edge_id,start_node,end_node,base_travel_time_min,mode,capacity_at_day,capacity_at_night,track_capacity
+W_L_S,Weggis,Luzern,6,Schiff,5400,2700,3
+L_K_Z,Luzern,Küsnacht_am_Rigi,15,Zug,5136,2568,2
+K_A_Z,Küsnacht_am_Rigi,Arth_Goldau,10,Zug,3840,1920,2
+R_A_Z,Rigi,Arth_Goldau,12,Zug,1200,400,2
+W_R_L,Weggis,Rigi,13,Luftseilbahn,1824,608,2
+W_K_B,Weggis,Küsnacht_am_Rigi,9,Bus,1500,600,4
