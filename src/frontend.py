@@ -917,19 +917,17 @@ except Exception as e:
 rows = []
 for asset in assets:
     raw_start = start_values[asset]
-    # For the mocked calendar, interpret the start as whole-day offset (floor)
-    start_day = int(math.floor(raw_start))
-    start_dt = base_date + timedelta(days=start_day)
+    # GA start values are hours since the start of the horizon (base_date 00:00)
+    start_dt = pd.Timestamp(base_date) + pd.Timedelta(hours=float(raw_start))
 
     duration_days = float(duration_days_by_asset.get(asset, DEFAULT_DURATION_DAYS))
-    end_dt = start_dt + timedelta(days=float(duration_days))
+    end_dt = start_dt + pd.Timedelta(days=duration_days)
 
-    # Use pandas timestamps (JSON-serializable through Plotly) and keep them separate from any timedelta objects
     rows.append(
         {
             "Asset": asset,
-            "Start": pd.Timestamp(start_dt),
-            "End": pd.Timestamp(end_dt),
+            "Start": start_dt,
+            "End": end_dt,
             "raw_start": float(raw_start),
             "duration_days": float(duration_days),
         }
@@ -951,7 +949,7 @@ df_schedule_plot["End"] = df_schedule_plot["End"].dt.to_pydatetime()
 # Create a Gantt-like timeline (manual) to avoid datetime/timedelta JSON issues.
 # We plot in "days since base_date" and format tick labels ourselves.
 df_bar = df_schedule.copy()
-df_bar["start_day"] = (df_bar["Start"].dt.normalize() - pd.Timestamp(base_date)).dt.days
+df_bar["start_day"] = (df_bar["Start"] - pd.Timestamp(base_date)) / pd.Timedelta(days=1)
 # Use the computed duration (may be fractional) rather than re-deriving it from timestamps.
 df_bar["duration_days"] = df_bar.get("duration_days", DEFAULT_DURATION_DAYS).astype(float)
 
@@ -964,11 +962,11 @@ for _, r in df_bar.iterrows():
         if edge_id_for_asset is not None
         else _hex_color_from_string(asset_id)
     )
-    start_day = int(r["start_day"]) 
+    start_day = float(r["start_day"])
     dur_days = float(r["duration_days"])
     end_day = float(start_day + dur_days)
-    start_date = base_date + timedelta(days=start_day)
-    end_date = base_date + timedelta(days=end_day)
+    start_date = r["Start"].strftime("%Y-%m-%d %H:%M")
+    end_date = r["End"].strftime("%Y-%m-%d %H:%M")
 
     fig_timeline.add_trace(
         go.Bar(
@@ -981,8 +979,8 @@ for _, r in df_bar.iterrows():
                     start_day,
                     dur_days,
                     end_day,
-                    start_date.isoformat(),
-                    end_date.isoformat(),
+                    start_date,
+                    end_date,
                     edge_id_for_asset,
                 ]
             ],
@@ -1097,8 +1095,8 @@ with col_left:
     st.write("Schedule table")
     df_display = df_schedule.drop(columns=["raw_start"], errors="ignore").copy()
     df_display = df_display.assign(
-        Start=df_display.Start.dt.date.astype(str),
-        End=df_display.End.dt.date.astype(str),
+        Start=df_display.Start.dt.strftime("%Y-%m-%d %H:%M"),
+        End=df_display.End.dt.strftime("%Y-%m-%d %H:%M"),
     )
     # Limit the table height to avoid excessive page length
     st.dataframe(df_display, height=250)
@@ -1278,7 +1276,7 @@ if 'run_now' in globals() and run_now:
     main_script = project_root / "src" / "main.py"
     cmd = [sys.executable, str(main_script),
            "--weights", f"{weights[0]}", f"{weights[1]}", f"{weights[2]}",
-           "--horizon", str(float(horizon)),
+           "--horizon", str(float(horizon) * 24.0),  # slider is in days, backend expects hours
            "--population", str(int(population)),
            "--cx", str(float(cx)),
            "--mut", str(float(mut)),

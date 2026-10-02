@@ -9,6 +9,13 @@ import simpy
 
 from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
 
+# Simulation time unit is hours; maintenance durations are given in half-days (12 h shifts).
+HOURS_PER_HALF_DAY = 12.0
+
+
+def maintenance_duration_hours(asset: Asset) -> float:
+    return float(asset.maintenance_duration_half_days) * HOURS_PER_HALF_DAY
+
 
 @dataclass
 class MaintenanceWindow:
@@ -117,7 +124,7 @@ class NetworkSimulator:
             asset = assets[asset_id]
             self.maintenance_windows[asset_id] = MaintenanceWindow(
                 start_hour=float(start),
-                end_hour=float(start) + float(asset.maintenance_duration_half_days),
+                end_hour=float(start) + maintenance_duration_hours(asset),
             )
 
         # Map assets to edges

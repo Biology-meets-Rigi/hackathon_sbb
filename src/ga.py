@@ -8,7 +8,7 @@ import numpy as np
 from deap import base, creator, tools
 
 from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
-from simulation import simulate_schedule
+from simulation import maintenance_duration_hours, simulate_schedule
 
 import logging 
 import time
@@ -22,7 +22,7 @@ class GAConfig:
     generations: int = 15
     crossover_prob: float = 0.3
     mutation_prob: float = 0.1
-    horizon_hours: float = 2*365
+    horizon_hours: float = 60 * 24.0
     seed: int = 42
 
 
@@ -109,7 +109,7 @@ class NSGA2Optimizer:
     def _max_start(self, idx: int) -> float:
         asset_id = self.asset_ids[idx % len(self.asset_ids)]
         asset = self.assets[asset_id]
-        return max(0.0, self.config.horizon_hours - asset.maintenance_duration_half_days)
+        return max(0.0, self.config.horizon_hours - maintenance_duration_hours(asset))
 
     def _bounds_correction(self, individual: List[float]) -> None:
         for i in range(len(individual)):
