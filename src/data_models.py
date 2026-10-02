@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 import pandas as pd
 
+# Each 24 h cycle is split like passenger_flows_day.csv: [0, 12) day, [12, 24) night.
+# capacity_at_day / capacity_at_night are passengers per such 12 h period.
+DAY_PERIOD_END_HOUR = 12.0
+
 
 @dataclass
 class Node:

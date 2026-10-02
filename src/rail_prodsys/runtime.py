@@ -3,6 +3,10 @@ Runtime coupling with a prodsys simulation, attached after Runner.initialize_sim
 
 PassengerDispatcher: releases passenger groups with time-of-day dependent Poisson arrivals through
 the prodsys sources (whose native arrival loops are switched off) and records travel times.
+
+InfrastructureCoupling: applies the asset layer to the running system. Vehicles are withdrawn
+gracefully at night and during maintenance (no new assignments, running trips are finished), and
+every hop is slowed down by the edge's condition / maintenance factor.
 """
 from __future__ import annotations
 
@@ -12,8 +16,9 @@ from typing import Callable, Dict, Generator, List, Optional, Tuple
 import numpy as np
 from prodsys.simulation.runner import Runner
 
-from data_models import PassengerFlow
-from rail_prodsys.network import RailNetwork, RouteVariant
+from assets import HOURS_PER_HALF_DAY, InfrastructureState
+from data_models import DAY_PERIOD_END_HOUR, PassengerFlow
+from rail_prodsys.network import Line, RailNetwork, RouteVariant
 
 MINUTES_PER_DAY = 24 * 60.0
 
@@ -86,3 +91,71 @@ class PassengerDispatcher:
         self.released_at[pax.data.ID] = self.env.now
         self.generated += 1
         self.route_counts[pax.data.type] += 1
+
+
+class _SlowedTimeModel:
+    """Vehicle travel time model wrapper: each hop takes the base time times the edge factor at hop start."""
+
+    def __init__(self, inner, factor: Callable[[], float]) -> None:
+        self._inner = inner
+        self._factor = factor
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def get_next_time(self, origin=None, target=None) -> float:
+        return self._inner.get_next_time(origin=origin, target=target) * self._factor()
+
+
+class InfrastructureCoupling:
+    def __init__(self, runner: Runner, network: RailNetwork, infra: InfrastructureState) -> None:
+        self.env = runner.env
+        self.network = network
+        self.infra = infra
+        self.router = runner.router_factory.global_system_router
+        self.vehicles = {
+            line_id: [runner.resource_factory.get_resource(vid) for vid in line.vehicle_ids]
+            for line_id, line in network.lines.items()
+        }
+        self.availability_log: List[Tuple[float, str, int]] = []  # (minute, line, vehicles in service)
+
+    def start(self, horizon_minutes: float) -> None:
+        for line_id, line in self.network.lines.items():
+            for vehicle in self.vehicles[line_id]:
+                for transport_state in vehicle.production_states:
+                    transport_state.time_model = _SlowedTimeModel(
+                        transport_state.time_model, lambda edge=line.edge_id: self.slowdown(edge)
+                    )
+            self.env.process(self._availability_loop(line, horizon_minutes))
+
+    def slowdown(self, edge_id: str) -> float:
+        return self.infra.edge_slowdown(edge_id, self.env.now / 60.0)
+
+    def vehicles_in_service(self, line: Line, t_hours: float) -> int:
+        nominal = line.vehicles_day if (t_hours % 24.0) < DAY_PERIOD_END_HOUR else line.vehicles_night
+        return max(1, round(nominal * self.infra.edge_capacity_factor(line.edge_id, t_hours)))
+
+    def _availability_loop(self, line: Line, horizon_minutes: float) -> Generator:
+        horizon_hours = horizon_minutes / 60.0
+        shift_changes = np.arange(0.0, horizon_hours, HOURS_PER_HALF_DAY)  # day/night boundaries
+        change_points = sorted(set(shift_changes.tolist()) | set(self.infra.edge_change_points(line.edge_id)))
+        for t_hours in change_points:
+            if t_hours >= horizon_hours:
+                break
+            yield self.env.timeout(t_hours * 60.0 - self.env.now)
+            self._set_in_service(line, self.vehicles_in_service(line, t_hours))
+
+    def _set_in_service(self, line: Line, count: int) -> None:
+        """The first `count` vehicles take new assignments; the others finish their queue and then idle."""
+        added = False
+        for index, vehicle in enumerate(self.vehicles[line.edge_id]):
+            vid = vehicle.data.ID
+            if index < count:
+                if vid not in self.router.free_resources:
+                    self.router.free_resources[vid] = vehicle
+                    added = True
+            else:
+                self.router.free_resources.pop(vid, None)
+        if added and not self.router.resource_got_free.triggered:
+            self.router.resource_got_free.succeed()  # route requests that waited for a vehicle
+        self.availability_log.append((self.env.now, line.edge_id, count))

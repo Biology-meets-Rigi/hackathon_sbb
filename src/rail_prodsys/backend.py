@@ -16,7 +16,7 @@ from prodsys.simulation.runner import Runner
 from assets import InfrastructureState
 from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
 from rail_prodsys.network import RailModelConfig, RailNetwork, build_network
-from rail_prodsys.runtime import PassengerDispatcher
+from rail_prodsys.runtime import InfrastructureCoupling, PassengerDispatcher
 
 sim.VERBOSE = 0  # no tqdm progress bar per run
 prodsys.set_logging("WARNING")
@@ -52,6 +52,8 @@ def simulate_schedule_prodsys(
     data.seed = int(rng.integers(0, 2**31 - 1))
     runner = Runner(production_system_data=data)
     runner.initialize_simulation()
+    coupling = InfrastructureCoupling(runner, network, infra)
+    coupling.start(horizon_minutes)
     dispatcher = PassengerDispatcher(runner, network, flows, rng)
     dispatcher.start(horizon_minutes)
     runner.run(horizon_minutes)

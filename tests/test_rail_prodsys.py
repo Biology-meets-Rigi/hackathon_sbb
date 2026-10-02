@@ -55,3 +55,40 @@ def test_prodsys_run(network_data):
     assert result.avg_condition == pytest.approx(infra.average_condition())
     assert result.total_cost == pytest.approx(infra.total_cost())
     assert result.schedule == {"Luzern_Weiche_1": 1.0}
+
+
+def test_coupling_vehicles_and_slowdown(network, network_data):
+    from prodsys.simulation.runner import Runner
+
+    from rail_prodsys.runtime import InfrastructureCoupling
+
+    _, _, assets, _ = network_data
+    plan = {"Luzern_Weiche_1": 1.0}  # works on L_K_Z from 1 h to 13 h
+    infra = InfrastructureState(assets, plan, HORIZON)
+    runner = Runner(production_system_data=network.production_system.model_copy(deep=True))
+    runner.initialize_simulation()
+    coupling = InfrastructureCoupling(runner, network, infra)
+
+    line = network.lines["L_K_Z"]
+    assert coupling.vehicles_in_service(line, 0.5) == line.vehicles_day
+    assert coupling.vehicles_in_service(line, 5.0) == round(line.vehicles_day * infra.capacity_factor)
+    assert coupling.vehicles_in_service(line, 13.5) == line.vehicles_night  # night, works finished
+    other = network.lines["W_K_B"]
+    assert coupling.vehicles_in_service(other, 5.0) == other.vehicles_day
+
+    coupling.start(HORIZON * 60.0)
+    runner.run(HORIZON * 60.0)
+    in_service = {(round(t), line_id): n for t, line_id, n in coupling.availability_log}
+    assert in_service[(60, "L_K_Z")] == 2 and in_service[(720, "L_K_Z")] == 1 and in_service[(780, "L_K_Z")] == 2
+    vehicle = runner.resource_factory.get_resource(line.vehicle_ids[0])
+    assert all(hasattr(s.time_model, "_inner") for s in vehicle.production_states)
+
+
+def test_maintenance_slows_down_trips(network_data):
+    nodes, edges, assets, flows = network_data
+    no_works = simulate_schedule_prodsys(nodes, edges, assets, flows, {}, np.random.default_rng(3), HORIZON)
+    works = simulate_schedule_prodsys(
+        nodes, edges, assets, flows, {"Luzern_Weiche_1": 1.0}, np.random.default_rng(3), HORIZON
+    )
+    assert works.generated_trips == no_works.generated_trips  # same demand (common random numbers)
+    assert works.avg_travel_time > no_works.avg_travel_time

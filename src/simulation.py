@@ -8,12 +8,9 @@ import numpy as np
 import simpy
 
 from assets import HOURS_PER_HALF_DAY, maintenance_duration_hours, maintenance_fits_horizon
-from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
+from data_models import DAY_PERIOD_END_HOUR, Asset, Edge, Node, PassengerFlow, SimulationResult
 
 # Simulation time unit is hours.
-# Each 24 h cycle is split like passenger_flows_day.csv: [0, 12) day, [12, 24) night.
-# capacity_at_day / capacity_at_night are passengers per such 12 h period.
-DAY_PERIOD_END_HOUR = 12.0
 # Capacity blockers are served before waiting passengers when the usable capacity drops.
 CAPACITY_BLOCK_PRIORITY = 0
 PASSENGER_PRIORITY = 1
