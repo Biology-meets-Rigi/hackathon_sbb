@@ -119,9 +119,10 @@ class NSGA2Optimizer:
 
         schedule = {asset_id: float(individual[i]) for i, asset_id in enumerate(self.asset_ids)}
 
-        # Common Random Numbers: deterministic seed per evaluation to make comparisons fairer
+        # Common Random Numbers: every schedule sees the same passenger demand realization,
+        # so objective differences come from the schedule and not from sampling noise.
         self.eval_counter += 1
-        rng = np.random.default_rng(self.base_seed + self.eval_counter)
+        rng = np.random.default_rng(self.base_seed)
 
         result: SimulationResult = simulate_schedule(
             self.nodes,
