@@ -39,6 +39,27 @@ Konventionen für den Referenzjahr-Fahrplan:
   Fahrzeuge verteilt. Ohne `block_id` plant `timetable/vehicles.py` die Umläufe selbst
   (Wendezeit 2 min).
 
+### Referenzjahr-Fahrplan einlesen
+
+Echte Feeds (z. B. der Schweizer Jahresfahrplan als GTFS von opentransportdata.swiss) haben eigene
+`stop_id`s, Gleise als Kinder von `parent_station`, erweiterte `route_type`-Codes und Fahrten, die
+weit über unser Modellnetz hinausgehen. Dafür gibt es eine Zuordnungsdatei:
+
+1. `data/gtfs_stop_mapping_template.csv` kopieren und je Modellknoten die `stop_id` aus `stops.txt`
+   eintragen (Spalten `stop_id,node_id`). Es darf auch die `parent_station` sein, dann gelten alle
+   Gleise des Bahnhofs.
+2. `python src/main.py --gtfs <feed-ordner> --stop-mapping <zuordnung.csv> --timetable-start YYYYMMDD`
+
+Der Feed wird dann auf das Modellnetz zugeschnitten: Nicht zugeordnete Halte fallen weg,
+aufeinanderfolgende Halte desselben Knotens (Gleise) werden zusammengefasst, und eine Fahrt wird
+geteilt, wo zwei aufeinanderfolgende Halte keine Kante bilden. `stop_times.txt` wird blockweise
+gelesen und auf die zugeordneten Halte gefiltert (gemessen: 300'000 Zeilen in 1.3 s; für den ganzen
+Schweizer Feed geschätzt 1–2 Minuten, einmal pro GA-Prozess). Fehlt `vehicle_capacity`, gelten Standardplätze je
+Verkehrsträger (Annahmen: Zug 400, Bus 70, Schiff 500, Luftseilbahn 80, Standseilbahn 100, Tram 180;
+`RailModelConfig.default_seats`).
+
+### Synthetischer Fahrplan
+
 Solange es den Referenzjahr-Fahrplan noch nicht gibt, ist `data/gtfs` ein synthetischer Feed aus den
 Netzdaten (`python src/generate_timetable.py`). Er hat einen Takt je Verkehrsträger (Zug 30, Schiff
 60, Bus 30, Luftseilbahn 15 min). Die Plätze sind so gewählt, dass `capacity_at_day` pro 12 h
@@ -103,8 +124,10 @@ ein:
 ```bash
 # GA mit prodsys-Backend (Default), Horizont in Stunden
 python src/main.py --horizon 336 --population 24 --generations 10 --cx 0.6 --mut 0.3
-# Referenzjahr-Fahrplan statt synthetischem Feed
+# Fahrplan im Projektformat (stop_id = node_id) statt dem synthetischen Feed
 python src/main.py --gtfs pfad/zum/gtfs --timetable-start 20260105 --horizon 336
+# Referenzjahr-Fahrplan (echter Feed) mit Zuordnung der Haltestellen
+python src/main.py --gtfs pfad/zum/feed --stop-mapping zuordnung.csv --timetable-start 20260105 --horizon 336
 # Synthetischen Fahrplan aus den Netzdaten neu erzeugen
 python src/generate_timetable.py
 # Referenz mit der eigenen SimPy-Simulation (ohne Fahrplan)
@@ -128,6 +151,8 @@ Initialisierung von prodsys. Die Disposition selbst braucht für 7 Tage etwa 0.0
 
 ## Bewusste Einschränkungen
 
+- Baustellenressourcen (Baumaschinen, Bauzüge, Material) werden im ersten Schritt bewusst nicht
+  geplant: Sie lassen sich im laufenden Betrieb einbinden oder laufen über die Strasse.
 - Die Disposition plant regelbasiert (frühester freier Platz, Umleitung, sonst Ausfall). Welche
   Fahrten bei Engpässen Vorrang haben, ist nicht Teil der Optimierung. Der GA bewertet die Folgen
   über Reisezeit und beförderte Fahrgäste.
@@ -161,4 +186,5 @@ Initialisierung von prodsys. Die Disposition selbst braucht für 7 Tage etwa 0.0
 | 8 | Disposition: Baufahrplan | erledigt |
 | 9 | prodsys fährt nach Baufahrplan (ersetzt den Abruf-Betrieb) | erledigt |
 | 10 | GA, Frontend, Doku, neue Ergebnisse | erledigt |
-| offen | Materialfluss (z. B. Bauzüge, die Streckenkapazität belegen), Ersatzverkehr | offen |
+| 11 | Referenzjahr-Fahrplan: Zuordnung der Haltestellen, Zuschnitt auf das Modellnetz | erledigt |
+| offen | Ersatzverkehr (Bus statt Zug bei Sperrung) | offen |
