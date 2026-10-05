@@ -37,6 +37,7 @@ class GAConfig:
     # prodsys backend: GTFS timetable directory (None = data/gtfs) and first simulated day (YYYYMMDD)
     gtfs_dir: Optional[str] = None
     timetable_start_date: Optional[str] = None
+    stop_mapping: Optional[str] = None  # CSV stop_id,node_id for real feeds
 
 
 BACKENDS = ("prodsys", "simpy")
@@ -56,6 +57,7 @@ def _init_worker(
     group_size: int = 10,
     gtfs_dir: Optional[str] = None,
     timetable_start_date: Optional[str] = None,
+    stop_mapping: Optional[str] = None,
 ) -> None:
     if backend not in BACKENDS:
         raise ValueError(f"unknown backend {backend!r}, expected one of {BACKENDS}")
@@ -70,14 +72,22 @@ def _init_worker(
         group_size=group_size,
         gtfs_dir=gtfs_dir,
         timetable_start_date=timetable_start_date,
+        stop_mapping=stop_mapping,
     )
 
 
-def rail_model_config(group_size: int, gtfs_dir: Optional[str] = None, timetable_start_date: Optional[str] = None):
+def rail_model_config(
+    group_size: int,
+    gtfs_dir: Optional[str] = None,
+    timetable_start_date: Optional[str] = None,
+    stop_mapping: Optional[str] = None,
+):
     """prodsys backend settings (imported lazily: prodsys is heavy)."""
     from rail_prodsys.network import RailModelConfig
 
-    config = RailModelConfig(group_size=group_size, timetable_start_date=timetable_start_date)
+    config = RailModelConfig(
+        group_size=group_size, timetable_start_date=timetable_start_date, stop_mapping_path=stop_mapping
+    )
     if gtfs_dir:
         config.gtfs_dir = gtfs_dir
     return config
@@ -92,7 +102,9 @@ def _simulate(schedule: Dict[str, float]) -> Tuple[SimulationResult, float]:
     if _WORKER["backend"] == "prodsys":
         from rail_prodsys.backend import simulate_schedule_prodsys  # imported lazily: prodsys is heavy
 
-        rail_config = rail_model_config(_WORKER["group_size"], _WORKER["gtfs_dir"], _WORKER["timetable_start_date"])
+        rail_config = rail_model_config(
+            _WORKER["group_size"], _WORKER["gtfs_dir"], _WORKER["timetable_start_date"], _WORKER["stop_mapping"]
+        )
         result = simulate_schedule_prodsys(*args, config=rail_config)
     else:
         result = simulate_schedule(*args)
@@ -131,7 +143,7 @@ class NSGA2Optimizer:
 
         self._worker_args = (
             nodes, edges, assets, flows_day, config.horizon_hours, self.base_seed, config.backend, config.group_size,
-            config.gtfs_dir, config.timetable_start_date,
+            config.gtfs_dir, config.timetable_start_date, config.stop_mapping,
         )
         _init_worker(*self._worker_args)
         self._pool: Optional[Pool] = None

@@ -20,7 +20,7 @@ from data_models import Asset, Edge, Node, PassengerFlow, SimulationResult
 from rail_prodsys.network import RailModelConfig, RailNetwork, build_network
 from rail_prodsys.runtime import PassengerDispatcher, TimetableOperator, TimetableRouteChooser
 from timetable.disposition import ConstructionTimetable, plan_construction_timetable
-from timetable.gtfs import load_gtfs
+from timetable.gtfs import load_gtfs, load_stop_mapping
 
 sim.VERBOSE = 0  # no tqdm progress bar per run
 prodsys.set_logging("WARNING")
@@ -42,8 +42,12 @@ def get_network(
             edges,
             horizon_hours,
             start_date=config.timetable_start_date,
+            default_seats=config.default_seats,
             min_turnaround_minutes=config.disposition.min_turnaround_minutes,
+            stop_mapping=load_stop_mapping(config.stop_mapping_path) if config.stop_mapping_path else None,
         )
+        if not timetable.trips:
+            raise ValueError(f"no trips of {config.gtfs_dir} run on the network within {horizon_hours} h")
         _NETWORK_CACHE[key] = build_network(nodes, edges, flows, timetable, config)
     return _NETWORK_CACHE[key]
 

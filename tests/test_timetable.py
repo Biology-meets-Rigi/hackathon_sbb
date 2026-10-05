@@ -102,3 +102,55 @@ def test_works_reduce_track_capacity(network_data):
     assert infra.edge_track_capacity("L_K_Z", 1, 1.0) == 0  # single track closed
     assert infra.edge_track_capacity("L_K_Z", 2, 13.0) == 2
     assert infra.edge_track_capacity("L_K_Z", None, 1.0) is None
+
+
+def test_route_type_modes():
+    from timetable.gtfs import mode_of_route_type
+
+    assert [mode_of_route_type(c) for c in (2, 3, 4, 6, 106, 700, 1000, 1300, 1400)] == [
+        "Zug", "Bus", "Schiff", "Luftseilbahn", "Zug", "Bus", "Schiff", "Luftseilbahn", "Standseilbahn"
+    ]
+
+
+def test_real_feed_is_clipped_to_the_network(tmp_path, network_data):
+    """Swiss-style feed: platforms with parent stations, stops outside the model, extended route types."""
+    _, edges, _, _ = network_data
+    pd.DataFrame(
+        [
+            {"stop_id": "Parent8505000", "stop_name": "Luzern", "parent_station": ""},
+            {"stop_id": "8505000:0:1", "stop_name": "Luzern", "parent_station": "Parent8505000"},
+            {"stop_id": "8505000:0:2", "stop_name": "Luzern", "parent_station": "Parent8505000"},
+            {"stop_id": "8505201", "stop_name": "Meggen", "parent_station": ""},  # not modelled
+            {"stop_id": "8505110", "stop_name": "Kuessnacht", "parent_station": ""},
+            {"stop_id": "8508000", "stop_name": "Arth-Goldau", "parent_station": ""},
+            {"stop_id": "8503000", "stop_name": "Zuerich HB", "parent_station": ""},  # outside the network
+        ]
+    ).to_csv(tmp_path / "stops.txt", index=False)
+    pd.DataFrame([{"route_id": "S3", "route_type": 106}]).to_csv(tmp_path / "routes.txt", index=False)
+    pd.DataFrame(
+        [{"route_id": "S3", "service_id": "all", "trip_id": t} for t in ("through", "split", "platforms")]
+    ).to_csv(tmp_path / "trips.txt", index=False)
+    rows = []
+    for trip, stops in {
+        "through": [("8503000", "06:00"), ("8505000:0:1", "06:50"), ("8505201", "06:58"), ("8505110", "07:06"), ("8508000", "07:16")],
+        "split": [("8505000:0:2", "08:00"), ("8508000", "08:20"), ("8505110", "08:30")],  # Luzern-Arth is no edge
+        "platforms": [("8505000:0:1", "09:00"), ("8505000:0:2", "09:03"), ("8505110", "09:18")],
+    }.items():
+        for seq, (stop, time) in enumerate(stops, start=1):
+            rows.append({"trip_id": trip, "arrival_time": f"{time}:00", "departure_time": f"{time}:00", "stop_id": stop, "stop_sequence": seq})
+    pd.DataFrame(rows).to_csv(tmp_path / "stop_times.txt", index=False)
+    pd.DataFrame([{"service_id": "all", "date": "20260105", "exception_type": 1}]).to_csv(tmp_path / "calendar_dates.txt", index=False)
+    mapping = {"Parent8505000": "Luzern", "8505110": "Küsnacht_am_Rigi", "8508000": "Arth_Goldau"}
+
+    timetable = load_gtfs(str(tmp_path), edges, 24.0, default_seats={"Zug": 400}, stop_mapping=mapping)
+    trips = {t.trip_id: t for t in timetable.trips}
+    assert set(trips) == {"through@0", "split@0", "platforms@0"}
+    through = trips["through@0"]
+    assert [(l.edge_id, l.from_station, l.to_station) for l in through.legs] == [
+        ("L_K_Z", "Luzern", "Küsnacht_am_Rigi"), ("K_A_Z", "Küsnacht_am_Rigi", "Arth_Goldau")
+    ]
+    assert through.departure == 6 * 60 + 50 and through.legs[0].arrival == 7 * 60 + 6
+    assert through.seats == 400 and through.mode == "Zug"
+    assert [l.edge_id for l in trips["split@0"].legs] == ["K_A_Z"]  # the part without edge is dropped
+    platforms = trips["platforms@0"]
+    assert platforms.departure == 9 * 60 + 3 and [l.edge_id for l in platforms.legs] == ["L_K_Z"]

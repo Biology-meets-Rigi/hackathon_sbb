@@ -44,6 +44,12 @@ class RailModelConfig:
     group_size: int = 10  # passengers per simulated product
     gtfs_dir: str = DEFAULT_GTFS_DIR  # timetable (reference year or synthetic, see generate_timetable.py)
     timetable_start_date: Optional[str] = None  # YYYYMMDD of horizon start; default: first service day
+    # Real feeds: CSV stop_id,node_id; the timetable is then clipped to the modelled network
+    stop_mapping_path: Optional[str] = None
+    # Passengers per vehicle where the feed has no vehicle_capacity (assumptions per mode)
+    default_seats: Dict[str, int] = field(
+        default_factory=lambda: {"Zug": 400, "Bus": 70, "Schiff": 500, "Luftseilbahn": 80, "Standseilbahn": 100, "Tram": 180}
+    )
     disposition: DispositionConfig = field(default_factory=DispositionConfig)
     dwell_minutes: float = 2.0  # transfer / alighting at a station
     walk_speed_m_per_min: float = 80.0  # station -> exit
