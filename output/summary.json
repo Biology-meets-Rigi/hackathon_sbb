@@ -3,40 +3,40 @@
   "backend": "prodsys",
   "horizon_hours": 336.0,
   "best_schedule": {
-    "Weggis_Kai": 21.393587612210503,
-    "Luzern_kai": 311.9672069429778,
-    "Luzern_Weiche_1": 169.3464927789047,
-    "Luzern_Weiche_2": 56.78681794856567,
-    "K\u00fcsnacht_Weiche_1": 9.902706724952196,
-    "Br\u00fccke_Luzern_K\u00fc": 335.04814967787894,
-    "Weggis_KS": 229.2796685334,
-    "K\u00fc_KS": 333.38392849928493,
-    "AG_K\u00fc_Weiche_1": 175.59345226640903,
-    "AG_K\u00fc_Weiche_2": 31.501548128046693,
-    "AG_K\u00fc_Weiche_3": 30.18230050157272,
-    "Br\u00fccke_Luzern_K\u00fc_2": 326.929230623213,
-    "AG_Ri_Tunnel1": 37.240899205578344,
-    "AG_Ri_Tunnel2": 39.35453237429836,
-    "AG_Ri_Weiche1": 27.635344932470616,
-    "Ri_Wegg_Seilen": 330.20074995749565,
-    "Ri_Wegg_Kabine": 8.221506176621393
+    "Weggis_Kai": 114.38099410527491,
+    "Luzern_kai": 121.71857261717741,
+    "Luzern_Weiche_1": 39.9883935486339,
+    "Luzern_Weiche_2": 147.5464691174284,
+    "K\u00fcsnacht_Weiche_1": 110.66244503079449,
+    "Br\u00fccke_Luzern_K\u00fc": 326.4552811490007,
+    "Weggis_KS": 212.8001014604115,
+    "K\u00fc_KS": 174.2522265934211,
+    "AG_K\u00fc_Weiche_1": 10.19238744960704,
+    "AG_K\u00fc_Weiche_2": 6.727858520714335,
+    "AG_K\u00fc_Weiche_3": 5.939608171941336,
+    "Br\u00fccke_Luzern_K\u00fc_2": 324.06332551484934,
+    "AG_Ri_Tunnel1": 169.28818459492368,
+    "AG_Ri_Tunnel2": 114.74566248561285,
+    "AG_Ri_Weiche1": 311.0259317079685,
+    "Ri_Wegg_Seilen": 295.6615656105829,
+    "Ri_Wegg_Kabine": 19.87238763989021
   },
   "deferred_assets": [
+    "AG_Ri_Weiche1",
     "Br\u00fccke_Luzern_K\u00fc",
     "Br\u00fccke_Luzern_K\u00fc_2",
-    "K\u00fc_KS",
     "Ri_Wegg_Seilen"
   ],
   "objectives": {
-    "served_adjusted": 92590.0,
-    "avg_condition": 0.7644739134515773,
-    "avg_travel_time": 0.8085711239795842,
-    "total_cost": 10450000.0
+    "served_adjusted": 92540.0,
+    "avg_condition": 0.769903445068183,
+    "avg_travel_time": 0.6184996552981455,
+    "total_cost": 10240000.0
   },
   "notes": [
     "Objectives are true multi-objective (NSGA-II): maximize served, condition; minimize travel time, cost.",
-    "Simulation backend: prodsys (stations = production resources, lines = link transport processes with vehicles, passengers = products in groups).",
-    "Maintenance withdraws vehicles of the line (capacity) and slows it down; passengers choose the fastest route variant at departure.",
+    "Simulation backend: prodsys (stations = production resources, vehicles = transport resources running the timetable blocks, passengers = products in groups).",
+    "Works reduce the track capacity of a section (vehicles at the same time) and slow it down; the construction timetable delays, reroutes or cancels trips; passengers choose the route with the earliest arrival in the operated timetable.",
     "Asset condition degrades with time; maintenance renews it (asset layer, src/assets.py).",
     "start_hour is in hours since horizon start; jobs not finishing within the horizon are deferred."
   ],
@@ -44,17 +44,27 @@
     "backend": "prodsys",
     "group_size": 10,
     "lines": {
-      "W_L_S": {
-        "mode": "Schiff",
+      "K_A_Z": {
+        "mode": "Zug",
         "stations": [
-          "Weggis",
-          "Luzern"
+          "K\u00fcsnacht_am_Rigi",
+          "Arth_Goldau"
         ],
-        "vehicles_day": 4,
-        "vehicles_night": 2,
-        "seats_per_vehicle": 30,
-        "driving_share_pct": 44.83924405038937,
-        "maintenance_hours": 48.0
+        "vehicles": 1,
+        "seats_per_vehicle": 160,
+        "load_factor_pct": 12.293336673346694,
+        "passengers": 19630,
+        "left_behind_passengers": 0,
+        "maintenance_hours": 48.0,
+        "trips": {
+          "planned": 1008,
+          "on_time": 859,
+          "delayed": 139,
+          "rerouted": 0,
+          "short_turned": 0,
+          "cancelled": 10,
+          "mean_delay_minutes": 1.9057214896114383
+        }
       },
       "L_K_Z": {
         "mode": "Zug",
@@ -62,23 +72,21 @@
           "Luzern",
           "K\u00fcsnacht_am_Rigi"
         ],
-        "vehicles_day": 4,
-        "vehicles_night": 2,
-        "seats_per_vehicle": 60,
-        "driving_share_pct": 45.54932738889093,
-        "maintenance_hours": 48.0
-      },
-      "K_A_Z": {
-        "mode": "Zug",
-        "stations": [
-          "K\u00fcsnacht_am_Rigi",
-          "Arth_Goldau"
-        ],
-        "vehicles_day": 4,
-        "vehicles_night": 2,
-        "seats_per_vehicle": 30,
-        "driving_share_pct": 49.13973406605324,
-        "maintenance_hours": 72.0
+        "vehicles": 3,
+        "seats_per_vehicle": 214,
+        "load_factor_pct": 11.142937640871525,
+        "passengers": 23730,
+        "left_behind_passengers": 0,
+        "maintenance_hours": 48.0,
+        "trips": {
+          "planned": 1008,
+          "on_time": 862,
+          "delayed": 106,
+          "rerouted": 0,
+          "short_turned": 0,
+          "cancelled": 40,
+          "mean_delay_minutes": 2.944301497061833
+        }
       },
       "R_A_Z": {
         "mode": "Zug",
@@ -86,23 +94,21 @@
           "Rigi",
           "Arth_Goldau"
         ],
-        "vehicles_day": 4,
-        "vehicles_night": 1,
-        "seats_per_vehicle": 10,
-        "driving_share_pct": 23.061670695547623,
-        "maintenance_hours": 107.71918744182773
-      },
-      "W_R_L": {
-        "mode": "Luftseilbahn",
-        "stations": [
-          "Weggis",
-          "Rigi"
-        ],
-        "vehicles_day": 4,
-        "vehicles_night": 1,
-        "seats_per_vehicle": 20,
-        "driving_share_pct": 33.38244466953612,
-        "maintenance_hours": 12.0
+        "vehicles": 1,
+        "seats_per_vehicle": 50,
+        "load_factor_pct": 13.562653562653562,
+        "passengers": 5520,
+        "left_behind_passengers": 30,
+        "maintenance_hours": 102.54252210931082,
+        "trips": {
+          "planned": 896,
+          "on_time": 619,
+          "delayed": 195,
+          "rerouted": 0,
+          "short_turned": 0,
+          "cancelled": 82,
+          "mean_delay_minutes": 4.629453316952688
+        }
       },
       "W_K_B": {
         "mode": "Bus",
@@ -110,110 +116,165 @@
           "Weggis",
           "K\u00fcsnacht_am_Rigi"
         ],
-        "vehicles_day": 4,
-        "vehicles_night": 2,
-        "seats_per_vehicle": 10,
-        "driving_share_pct": 55.34832390141307,
-        "maintenance_hours": 12.0
+        "vehicles": 14,
+        "seats_per_vehicle": 63,
+        "load_factor_pct": 13.417605848309472,
+        "passengers": 8810,
+        "left_behind_passengers": 600,
+        "maintenance_hours": 24.0,
+        "trips": {
+          "planned": 938,
+          "on_time": 864,
+          "delayed": 74,
+          "rerouted": 0,
+          "short_turned": 0,
+          "cancelled": 0,
+          "mean_delay_minutes": 1.4771907205046195
+        }
+      },
+      "W_L_S": {
+        "mode": "Schiff",
+        "stations": [
+          "Weggis",
+          "Luzern"
+        ],
+        "vehicles": 1,
+        "seats_per_vehicle": 450,
+        "load_factor_pct": 12.53968253968254,
+        "passengers": 28440,
+        "left_behind_passengers": 0,
+        "maintenance_hours": 31.337578511902507,
+        "trips": {
+          "planned": 504,
+          "on_time": 459,
+          "delayed": 45,
+          "rerouted": 0,
+          "short_turned": 0,
+          "cancelled": 0,
+          "mean_delay_minutes": 0.7506200396825427
+        }
+      },
+      "W_R_L": {
+        "mode": "Luftseilbahn",
+        "stations": [
+          "Weggis",
+          "Rigi"
+        ],
+        "vehicles": 3,
+        "seats_per_vehicle": 38,
+        "load_factor_pct": 11.883600917431192,
+        "passengers": 8290,
+        "left_behind_passengers": 80,
+        "maintenance_hours": 12.0,
+        "trips": {
+          "planned": 1792,
+          "on_time": 1708,
+          "delayed": 36,
+          "rerouted": 0,
+          "short_turned": 0,
+          "cancelled": 48,
+          "mean_delay_minutes": 0.8753683894017046
+        }
       }
     },
     "routes": {
       "Arth_Goldau > Rigi": {
-        "avg_travel_min": 56.683562083608344,
+        "avg_travel_min": 38.833030557661566,
         "variants": [
           {
             "via": "Arth_Goldau > Rigi",
-            "passengers": 4990,
-            "share": 0.8990990990990991,
-            "avg_travel_min": 49.35412405951053
+            "passengers": 5400,
+            "share": 0.972972972972973,
+            "avg_travel_min": 37.99982795428162
           },
           {
             "via": "Arth_Goldau > K\u00fcsnacht_am_Rigi > Weggis > Rigi",
-            "passengers": 560,
-            "share": 0.1009009009009009,
-            "avg_travel_min": 121.99409019119415
+            "passengers": 150,
+            "share": 0.02702702702702703,
+            "avg_travel_min": 68.82832427933941
           }
         ]
       },
       "K\u00fcsnacht_am_Rigi > Arth_Goldau": {
-        "avg_travel_min": 66.07714301098306,
+        "avg_travel_min": 31.533094956483854,
         "variants": [
           {
             "via": "K\u00fcsnacht_am_Rigi > Arth_Goldau",
             "passengers": 19380,
             "share": 1.0,
-            "avg_travel_min": 66.07714301098306
+            "avg_travel_min": 31.533094956483854
           }
         ]
       },
       "Luzern > K\u00fcsnacht_am_Rigi": {
-        "avg_travel_min": 63.37816496672266,
+        "avg_travel_min": 38.66175462370208,
         "variants": [
           {
             "via": "Luzern > K\u00fcsnacht_am_Rigi",
-            "passengers": 12800,
-            "share": 0.512615138165799,
-            "avg_travel_min": 70.17752876172432
+            "passengers": 23690,
+            "share": 0.94873848618342,
+            "avg_travel_min": 36.85201207081223
           },
           {
             "via": "Luzern > Weggis > K\u00fcsnacht_am_Rigi",
-            "passengers": 12170,
-            "share": 0.48738486183420104,
-            "avg_travel_min": 56.23799493384498
+            "passengers": 1280,
+            "share": 0.051261513816579896,
+            "avg_travel_min": 72.12785323846987
           }
         ]
       },
       "Weggis > K\u00fcsnacht_am_Rigi": {
-        "avg_travel_min": 37.564874377554766,
+        "avg_travel_min": 31.598415315277922,
         "variants": [
           {
             "via": "Weggis > K\u00fcsnacht_am_Rigi",
-            "passengers": 7140,
-            "share": 0.9754098360655737,
-            "avg_travel_min": 35.82492948091809
+            "passengers": 7260,
+            "share": 0.9918032786885246,
+            "avg_travel_min": 31.371347375230055
           },
           {
             "via": "Weggis > Luzern > K\u00fcsnacht_am_Rigi",
-            "passengers": 180,
-            "share": 0.02459016393442623,
-            "avg_travel_min": 106.58268861080994
+            "passengers": 60,
+            "share": 0.00819672131147541,
+            "avg_travel_min": 59.07363606106954
           }
         ]
       },
       "Weggis > Luzern": {
-        "avg_travel_min": 26.386174000659885,
+        "avg_travel_min": 43.500613460383676,
         "variants": [
           {
             "via": "Weggis > Luzern",
             "passengers": 27160,
             "share": 1.0,
-            "avg_travel_min": 26.386174000659885
+            "avg_travel_min": 43.500613460383676
           }
         ]
       },
       "Weggis > Rigi": {
-        "avg_travel_min": 39.35195323584419,
+        "avg_travel_min": 28.25371009434323,
         "variants": [
           {
             "via": "Weggis > Rigi",
-            "passengers": 8210,
-            "share": 0.9939467312348669,
-            "avg_travel_min": 38.88568570837478
+            "passengers": 8140,
+            "share": 0.9854721549636803,
+            "avg_travel_min": 27.300919081180975
           },
           {
             "via": "Weggis > K\u00fcsnacht_am_Rigi > Arth_Goldau > Rigi",
-            "passengers": 50,
-            "share": 0.006053268765133172,
-            "avg_travel_min": 115.91308124632175
+            "passengers": 120,
+            "share": 0.014527845036319613,
+            "avg_travel_min": 92.88470048718314
           }
         ]
       }
     },
     "transfers_per_station": {
-      "K\u00fcsnacht_am_Rigi": 610,
-      "Weggis": 12730,
-      "Luzern": 180,
-      "Arth_Goldau": 50
-    }
+      "K\u00fcsnacht_am_Rigi": 270,
+      "Weggis": 1430,
+      "Luzern": 60,
+      "Arth_Goldau": 120
+    },
+    "section_wait_minutes": 0.0
   }
 }
