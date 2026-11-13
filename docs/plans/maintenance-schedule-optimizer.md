@@ -9,7 +9,8 @@
 > **Why:** maintenance on quays, switches, tunnels, a bridge and a cable car around the Rigi closes or slows the
 > lines passengers use. The team wanted to show that a genetic algorithm, scored by a passenger simulation, can find
 > start times for this work that keep passengers moving, assets in good condition and cost low, and to make the
-> algorithm visible to a jury in a web app.
+> algorithm visible to a jury in a web app. The challenge behind it, the goals and the roadmap are in §1.1, from
+> the team's final presentation.
 
 ## 1. Introduction and goals
 
@@ -19,7 +20,40 @@
 
 *The issue's text and the numbered requirements the rest of the plan refers to.*
 
-There is no issue. The requirements are read from the code and the commit history of `main` `550c032`:
+There is no issue. The challenge and its goals come from the team's presentation "The magic of evolution… and how to adapt it to the transportation world" (2026-11-02, not in the repo):
+
+> The future planning of intermodal transport systems is being made more difficult by increasing traffic volumes,
+> quality requirements, and dependencies between different modes of transport. Develop a solution that uses AI to
+> automate/improve long-term planning.
+
+| Challenge (presentation) | Objective (presentation) | In this repo |
+|---|---|---|
+| Long-term planning depends on individual expertise, which limits scalability. | Systematise expert knowledge and enable scalable, AI-supported decisions. | The GA proposes schedules from data and a simulation (REQ-2, REQ-3). |
+| Intermodal systems are complex and fragmented and need specialised knowledge. | Integrate multimodal data and automate long-term scenario analysis. | Ship, train, cable car and bus in one network (REQ-1, NFR-4); one scenario of up to 168 h, passengers only on day 1 (L-5). |
+| Heterogeneous data structures hinder system-wide optimisation. | A shared data standard and transparent planning across operators. | Four CSV templates (§5.2); the raw asset database is not imported (§1.4). |
+
+- **User story:** construction projects are not synchronised.
+  - Within one mode: "Rigi Railway is closed due to switch construction! Didn't they replace them recently?"
+  - Across modes: "The Rigi cable car and railway are closed due to parallel construction!"
+  - In the code: no rule against parallel closures. Only served trips and travel time penalise them, and only on
+    day 1 (L-5).
+- **Hypothesis:** every transport system can be reduced to three objectives.
+  - High throughput: move people and goods.
+  - Low societal costs: external and internal.
+  - Good system condition: infrastructure in a stable and reliable state.
+  - In the code: four objectives. Throughput is served trips plus average travel time. Societal cost is the
+    maintenance cost only, without external costs (L-4). Condition is the average asset condition.
+- **Difficulties the presentation names:**
+  - Discrete and continuous decision variables. The code has continuous start times only.
+  - Maintenance affects capacity and condition; use degrades assets (0 in the data); condition affects travel time.
+  - Time-dependent behaviour, non-linearities, competing objectives.
+- **Its answer, a genetic algorithm (§4.4):**
+  - first generation, evaluate;
+  - drop the worst parents;
+  - pair, mutate, evaluate the children;
+  - choose the favourite child.
+
+The requirements of the built code are read from the code and the commit history of `main` `550c032`:
 
 - **REQ-1** Load the network (stations as nodes, lines as edges with mode, travel time and capacity), the assets on
   the edges and the passenger flows from CSV files in `data/`.
@@ -41,9 +75,11 @@ There is no issue. The requirements are read from the code and the commit histor
 
 | ID | Priority | Quality goal | Scenario |
 |---|---|---|---|
-| NFR-1 | 1 | Demo-ready | A run with the web app's defaults (population 24, 10 generations) finishes during a live pitch. Not measured; `ga.py` prints `[BENCHMARK] Generation N completed in … seconds`. |
+| NFR-1 | 1 | Demo-ready | A run with the web app's defaults (population 24, 10 generations) finishes during a live pitch; `ga.py` prints `[BENCHMARK] Generation N completed in … seconds` (98 s measured, §4.2). |
 | NFR-2 | 2 | Reproducible | The same CLI arguments and `--seed` give the same schedule: random start times come from `random.seed(seed)`, each evaluation from `default_rng(seed + eval_counter)`, a different seed per evaluation (not common random numbers, §4.6). |
 | NFR-3 | 3 | Readable for non-experts | A jury member sees on one page where the work happens (map), when (timeline) and what it costs the passengers (objectives). |
+| NFR-4 | 4 | Mode-agnostic | The presentation's "works with all modes of transport": a new mode is a new value in `edges_template.csv`, without code changes. |
+| NFR-5 | 5 | Scalable and computationally efficient | The presentation's "computationally efficient, inexpensive, scalable, traceable": the same approach runs on a full-size network. Not measured beyond the 5-station network. |
 
 ### 1.3 Stakeholders
 
@@ -53,7 +89,9 @@ There is no issue. The requirements are read from the code and the commit histor
 |---|---|---|
 | Hackathon team (simulation, GA) | MLuuwak, ash | A true multi-objective optimiser, scored by a passenger simulation. |
 | Hackathon team (frontend) | Elio (enwo02) | A map and timeline that make the result understandable. |
-| Challenge owner and jury | "Hack the Tracks" (SBB) | A convincing idea for maintenance planning, shown live. |
+| Challenge owner and jury | "Hack the Tracks" (SBB) | A convincing idea for maintenance planning, shown live; AI-supported long-term planning of intermodal transport (§1.1). |
+| Construction planners of the operators | - | Schedules that avoid repeated and parallel closures, within one mode and across modes (§1.1, user story). |
+| Passengers | - | Not to lose both a line and its alternative at the same time (§1.1, user story). |
 
 ### 1.4 Follow-ups (not in this PR)
 
@@ -78,6 +116,10 @@ Everything below is left out of the hackathon build. Fixes for the limitations o
 | Score travel time so that lost trips count: e.g. over generated trips, with a penalty for each trip not served. | Found after the hackathon. | Limitations (L-16) | - | - |
 | Pick the balanced schedule on meaningful scales: fixed ranges per objective or weights (with Q-2). | Found after the hackathon. | Limitations (L-17), Q-2 | - | - |
 | Control fitness noise: one seed for all individuals of a generation, served trips as a share of generated trips, or re-evaluation of the front. | Found after the hackathon. | Limitations (L-15) | - | - |
+| Synchronise construction across modes explicitly: a rule or objective against closing a line and its alternative at the same time. | The user story of §1.1; the code relies on served trips on day 1. | §1.1, Limitations (L-5) | - | - |
+| Expand from the 5-station network to a full-size network, and measure run time (NFR-5). | The presentation's next step; needs real infrastructure data. | §1.1, NFR-5 | - | - |
+| Add constraints: different average speeds, the capacity of each asset to clear a rail path; discrete decision variables. | The presentation's next steps. | §1.1 | - | - |
+| Pilot with real infrastructure data with an operator, after data collection and validation and a finished prototype. | The presentation's roadmap. | §1.1 | - | - |
 | Tests and CI. | Out of the hackathon's time. | §4.2 | - | - |
 | List `streamlit` and `plotly<7` in `requirements.txt`, stop tracking `src/__pycache__/` and `output/best_schedule.csv`. | Out of the hackathon's time. | Assumptions | - | - |
 | Import assets from the raw asset database (`data/Datenbank_ÖV_Modell.*`) and line geometries from `data/linie-mit-polygon.csv`. | The templates were filled by hand. | §12 | - | - |
@@ -201,6 +243,8 @@ skeleton `f3163c2`, so §3 has no current data model; the as-built model is in �
 | NFR-1 Demo-ready | A run finishes during the pitch. | Small defaults, a 5-station network, the web app starts the CLI. | §4.3, §4.5 |
 | NFR-2 Reproducible | Same seed, same schedule. | Seeded `random` for the GA, one seeded `numpy` generator per evaluation. | §4.4 |
 | NFR-3 Readable | One page shows where, when and what it costs. | Map, timeline and objective charts side by side, plus operator demos. | §4.5 |
+| NFR-4 Mode-agnostic | A new mode needs no code. | A mode is a label on an edge; capacity and travel time carry its behaviour. | §5.6 |
+| NFR-5 Scalable | A full-size network. | Not designed for yet: one simulation per individual, a full passenger simulation each. | §4.6 |
 
 ### 4.1 Design principles
 
@@ -251,6 +295,8 @@ plotly 7 the page stops at the map (`go.Scattermapbox` was removed), see §2.2. 
 | NFR-1 | Demo-ready | The run of REQ-6, timed in the browser. | ✅ 98 s in the sandbox (4–11 s per generation). | - |
 | NFR-2 | Reproducible | By reading the code: all randomness of the CLI is seeded. | ✅ | - |
 | NFR-3 | Readable | The hackathon jury (the repo is described as "Winning Team of Hack the Tracks"). | ✅ | - |
+| NFR-4 | Mode-agnostic | By reading the code: the simulation never reads `Edge.mode` (§5.6); only the web app uses it, for colours and bus routes. | ✅ | - |
+| NFR-5 | Scalable | Not measured: 5 stations, 6 edges, 16 assets; a simulation per individual with a Dijkstra search per passenger (§4.4). | - | - |
 
 ### 4.3 Command line run (REQ-1, REQ-3, REQ-4)
 
