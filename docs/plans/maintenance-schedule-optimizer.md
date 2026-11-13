@@ -117,29 +117,29 @@ Everything below is left out of the hackathon build. Fixes for the limitations o
 
 | Follow-up | Why not in this PR | From | Findings | Issue |
 |---|---|---|---|---|
-| Keep maintenance from blocking an edge for good: reduce its capacity without per-passenger slot reservations. | Found after the hackathon. | Limitations (L-1), Q-4 | - | - |
-| One time unit for start times, durations and the horizon. | Found after the hackathon. | Limitations (L-2), Q-1 | - | - |
-| Let the objective weights of the web app and `--weights` change which schedule is picked. | Not finished at the hackathon. | Limitations (L-3), Q-2 | - | - |
-| Make total cost depend on the schedule, or drop it as an objective. | Found after the hackathon. | Limitations (L-4), Q-3 | - | - |
-| Repeat the day's passenger flows over the whole horizon. | Found after the hackathon. | Limitations (L-5), Q-5 | - | - |
-| Use night capacities and night flows. | Dropped in `5c104df` ("no more night flows"). | Limitations (L-6) (TODO) | - | - |
-| Hard closures of an edge (e.g. a bridge replacement). | Prepared, disabled in `_get_blocked_edges`. | Limitations (L-7) | - | - |
+| Keep maintenance from blocking an edge for good: reduce its capacity without per-passenger slot reservations. | Found after the hackathon. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-1), Q-4 | - | - |
+| One time unit for start times, durations and the horizon. | Found after the hackathon. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-2), Q-1 | - | - |
+| Let the objective weights of the web app and `--weights` change which schedule is picked. | Not finished at the hackathon. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-3), Q-2 | - | - |
+| Make total cost depend on the schedule, or drop it as an objective. | Found after the hackathon. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-4), Q-3 | - | - |
+| Repeat the day's passenger flows over the whole horizon. | Found after the hackathon. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-5), Q-5 | - | - |
+| Use night capacities and night flows. | Dropped in `5c104df` ("no more night flows"). Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-6) (TODO) | - | - |
+| Hard closures of an edge (e.g. a bridge replacement). | Prepared, disabled in `_get_blocked_edges`. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-7) | - | - |
 | Show progress while a run is going on, and the new result when it ends. | Streamlit blocks during `subprocess.run`. | Limitations (L-8) | - | - |
-| Validate the input CSV files: references between nodes, edges, assets and flows, unique IDs. | Found after the hackathon. | Limitations (L-12) | - | - |
+| Validate the input CSV files: references between nodes, edges, assets and flows, unique IDs. | Found after the hackathon. Unique IDs tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-12) | - | - |
 | Accept `--generations 0`, or reject it in the argument parser. | Found after the hackathon. | Limitations (L-11) | - | - |
-| Let maintenance improve condition: keep condition grades instead of cutting them to 1.0. | Needs a condition scale (with Q-1's units). | Limitations (L-13, L-9) | - | - |
-| Pick parents by Pareto rank and crowding distance (`selTournamentDCD`). | Found after the hackathon. | Limitations (L-14) | - | - |
+| Let maintenance improve condition: keep condition grades instead of cutting them to 1.0. | Needs a condition scale (with Q-1's units). Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-13, L-9) | - | - |
+| Pick parents by Pareto rank and crowding distance (`selTournamentDCD`). | Found after the hackathon. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-14) | - | - |
 | Score travel time so that lost trips count: e.g. over generated trips, with a penalty for each trip not served. | Found after the hackathon. | Limitations (L-16) | - | - |
-| Pick the balanced schedule on meaningful scales: fixed ranges per objective or weights (with Q-2). | Found after the hackathon. | Limitations (L-17), Q-2 | - | - |
-| Control fitness noise: one seed for all individuals of a generation, served trips as a share of generated trips, or re-evaluation of the front. | Found after the hackathon. | Limitations (L-15) | - | - |
+| Pick the balanced schedule on meaningful scales: fixed ranges per objective or weights (with Q-2). | Found after the hackathon. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-17), Q-2 | - | - |
+| Control fitness noise: one seed for all individuals of a generation, served trips as a share of generated trips, or re-evaluation of the front. | Found after the hackathon. Tried on branch `prodsys-intro`, not merged (§3.1). | Limitations (L-15) | - | - |
 | Benchmark the GA against a MILP and a greedy rule on the same model, and on the full-size network. | Tests the premise of §4 (§2.2); out of the hackathon's time. | Assumptions, §4 | - | - |
 | Compare a schedule against the status quo, the operators' current plan, as a baseline. | The presentation's main claim needs it; there is no current plan in the data. | §4.2 (claims) | - | - |
 | Synchronise construction across modes explicitly: a rule or objective against closing a line and its alternative at the same time. | The user story of §1.1; the code relies on served trips on day 1. | §1.1, Limitations (L-5) | - | - |
 | Expand from the 5-station network to a full-size network, and measure run time (NFR-5). | The presentation's next step; needs real infrastructure data. | §1.1, NFR-5 | - | - |
 | Add constraints: different average speeds, the capacity of each asset to clear a rail path; discrete decision variables. | The presentation's next steps. | §1.1 | - | - |
 | Pilot with real infrastructure data with an operator, after data collection and validation and a finished prototype. | The presentation's roadmap. | §1.1 | - | - |
-| Tests and CI. | Out of the hackathon's time. | §4.2 | - | - |
-| List `streamlit` and `plotly<7` in `requirements.txt`, stop tracking `src/__pycache__/` and `output/best_schedule.csv`. | Out of the hackathon's time. | Assumptions | - | - |
+| Tests and CI. | Out of the hackathon's time. Tried on branch `prodsys-intro`, not merged (§3.1). | §4.2 | - | - |
+| List `streamlit` and `plotly<7` in `requirements.txt`, stop tracking `src/__pycache__/` and `output/best_schedule.csv`. | Out of the hackathon's time. Tried on branch `prodsys-intro` with `plotly` 7.1.0 and a fixed web app, not merged (§3.1). | Assumptions | - | - |
 | Import assets from the raw asset database (`data/Datenbank_ÖV_Modell.*`) and line geometries from `data/linie-mit-polygon.csv`. | The templates were filled by hand. | §12 | - | - |
 
 ## 2. Constraints
@@ -256,6 +256,56 @@ Context: the repo's inputs, which the code only reads.
 
 Scope: this plan describes everything in `src/` and the files it writes to `output/`. There was no code before the
 skeleton `f3163c2`, so §3 has no current data model; the as-built model is in §5.
+
+### 3.1 Work beyond `main`: branch `prodsys-intro` (checked 2026-11-13)
+
+*Work on the repo's branches that is not merged, and what of it was checked.*
+
+One branch carries work beyond `main`: [`prodsys-intro`](https://github.com/Biology-meets-Rigi/hackathon_sbb/tree/prodsys-intro) (`fb51e72`, 38 commits from 2026-10-02 to
+2026-10-05, 0 behind `main`, no PR, not reviewed). `prodsys_jannik` is its first 12 commits; all other branches and
+PRs #1–#4 are merged. Its design is in `docs/prodsys_integration.md` on the branch (in German).
+
+Stage 1, fixes to the SimPy model (the first 12 commits):
+
+| Commit | Change | Plan item | Checked |
+|---|---|---|---|
+| `dff3b6a` | Passenger flows repeat every day. | L-5, Q-5 a) | ✅ 18,861 trips in 60 h instead of 6,547 |
+| `35009fb` | One time unit: the simulation computes in hours (durations × 12). | L-2, Q-1 a) | ✅ durations 12–144 h |
+| `2643560` | Condition classes 1–5 mapped to a score 0..1. | L-9, L-13 | By subject |
+| `1437f2d` | Maintenance that does not fit the horizon is deferred and costs nothing. | L-4, Q-3 b) | ✅ cost varies (0–36.6 M) |
+| `1f81789` | Common random numbers: the same seed for every evaluation. | L-15 | ✅ by reading `ga.py` |
+| `36461f0` | Capacity as throughput per 12 h, day and night; a closure is held once per edge. | L-1, Q-4 b), L-6 | ✅ no blocked edge: a window at 0 h serves as many trips as one at 50 h |
+| `844ee77` | Routing takes queues into account. | §2.2 (no rerouting) | By subject |
+| `6998e3e` | Parents by `selTournamentDCD`; cx and mut as probabilities. | L-14 | ✅ by reading `ga.py` |
+| `9270a94` | The web app's weights steer the balanced pick. | L-3, Q-2 b), L-17 | ✅ by reading `ga.py` |
+| `f306e99` | Duplicate asset ID resolved, IDs checked when loading. | L-12 (IDs only) | ✅ 17 assets load |
+| `fe5578a` | Evaluations in parallel (multiprocessing). | NFR-5 | By subject |
+
+Stage 2, a timetable-based simulation (the other 26 commits):
+
+- [prodsys](https://github.com/sdm4fzi/prodsys) 1.2.3, a simulator of production systems, as the default backend:
+  stations as resources, vehicles as transport resources, passengers as products in groups of 10; the SimPy model
+  stays as `--backend simpy`.
+- A GTFS timetable, synthetic from the network data or the real Swiss timetable cut to the model network; vehicle
+  circulations; track capacity per section; a construction timetable that delays, reroutes, turns back or cancels
+  trips (a closed single-track section is fully closed, part of L-7); transfers and route variants.
+- Tests (pytest, 22 tests) and pinned `streamlit` 1.64.0 and `plotly` 7.1.0, with the web app made to run on
+  plotly 7 (§2.2); `numpy` is pinned below 2 for prodsys. No CI.
+- Deliberate limitations, from the branch's design document: construction resources are not planned, the
+  construction timetable is rule-based, reroutes stay within one mode, replacement buses are open.
+
+Checked 2026-11-13 in a separate environment (Python 3.12, `requirements-dev.txt` of the branch):
+
+- All 22 tests pass (13 s).
+- A GA run with the prodsys backend (horizon 168 h, population 4, 1 generation) runs end to end: 5 s per
+  generation on 8 cores; the design document gives 12–15 s per evaluation over 7 days, which matters for NFR-1 and
+  NFR-5.
+- The landscape of §4.6 changes on the SimPy backend: at a 60 h horizon most windows do not fit and are deferred,
+  and deferring all maintenance is best in condition, travel time and cost; at 336 h there is a real trade-off
+  (all deferred: condition 0.62, travel time 0.28 h, cost 0; all at the start: 0.80, 1.43 h, 36.6 M), while served
+  trips stay almost the same for every schedule.
+
+Not covered by the branch, as far as its commits show: L-8, L-11, L-16, and the baseline and benchmark follow-ups.
 
 ## 4. Solution strategy
 
@@ -834,6 +884,7 @@ The team decides; they are open only if the project goes on after the hackathon.
 *Proposal:* a), the simulation already runs in hours and the flows are per hour. Against it: the presentation thinks
 in days (a scenario with a bridge of "2 Days" and a tunnel of "1 Day", schedules drawn over days D1–D7), which
 argues for b) at least in what users see; the team decides.
+Tried on branch `prodsys-intro`, not merged: a) (`35009fb`) (§3.1).
 
 💡 **(Q-2) What do the objective weights do? (L-3)**
 - a) Remove the weight sliders and `--weights`; keep the unweighted distance to the ideal point.
@@ -842,6 +893,7 @@ argues for b) at least in what users see; the team decides.
 
 *Proposal:* b), the sliders are part of the demo and DP-1 is kept. The presentation shows "Set priorities" as a step
 of the method, which supports b).
+Tried on branch `prodsys-intro`, not merged: b) (`9270a94`) (§3.1).
 
 💡 **(Q-3) How does cost become an objective that depends on the schedule? (L-4)**
 - a) Drop `total_cost` as an objective.
@@ -849,6 +901,7 @@ of the method, which supports b).
   the start of the work.
 
 *Proposal:* a) until there is data for b).
+Tried on branch `prodsys-intro`, not merged: b), deferral (`1437f2d`) (§3.1).
 
 💡 **(Q-4) How does maintenance reduce an edge's capacity? (L-1)**
 - a) A second `simpy.Resource` per edge with `capacity * maintenance_capacity_factor`, used while maintenance is
@@ -856,12 +909,14 @@ of the method, which supports b).
 - b) Treat capacity as passengers per hour with a token bucket (`simpy.Container`), as the data likely means.
 
 *Proposal:* a), smallest change that removes the deadlock; b) together with Q-5.
+Tried on branch `prodsys-intro`, not merged: b), throughput per 12 h (`36461f0`) (§3.1).
 
 💡 **(Q-5) Do the day's flows repeat over the horizon? (L-5)**
 - a) Repeat `passenger_flows_day.csv` every 24 hours.
 - b) Keep one day and limit the horizon to it.
 
 *Proposal:* a), otherwise most of the horizon has no passengers.
+Tried on branch `prodsys-intro`, not merged: a) (`dff3b6a`) (§3.1).
 
 ### 9.2 Decision log
 
