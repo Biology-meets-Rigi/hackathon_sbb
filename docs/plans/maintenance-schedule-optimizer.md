@@ -75,6 +75,8 @@ Everything below is left out of the hackathon build. Fixes for the limitations o
 | Accept `--generations 0`, or reject it in the argument parser. | Found after the hackathon. | Limitations (L-11) | - | - |
 | Let maintenance improve condition: keep condition grades instead of cutting them to 1.0. | Needs a condition scale (with Q-1's units). | Limitations (L-13, L-9) | - | - |
 | Pick parents by Pareto rank and crowding distance (`selTournamentDCD`). | Found after the hackathon. | Limitations (L-14) | - | - |
+| Score travel time so that lost trips count: e.g. over generated trips, with a penalty for each trip not served. | Found after the hackathon. | Limitations (L-16) | - | - |
+| Pick the balanced schedule on meaningful scales: fixed ranges per objective or weights (with Q-2). | Found after the hackathon. | Limitations (L-17), Q-2 | - | - |
 | Control fitness noise: one seed for all individuals of a generation, served trips as a share of generated trips, or re-evaluation of the front. | Found after the hackathon. | Limitations (L-15) | - | - |
 | Tests and CI. | Out of the hackathon's time. | §4.2 | - | - |
 | List `streamlit` and `plotly<7` in `requirements.txt`, stop tracking `src/__pycache__/` and `output/best_schedule.csv`. | Out of the hackathon's time. | Assumptions | - | - |
@@ -145,6 +147,13 @@ both times.
   commented out); the other objectives decide only on ties. No tracker.
 - **L-15 Fitness noise is not controlled.** Every evaluation gets its own seed and an individual is never evaluated
   again, so on the plateau of §4.6 schedules are ranked by their demand draw, and a lucky draw stays. No tracker.
+- **L-16 Losing trips shortens the average travel time.** `avg_travel_time` averages over served trips only, so a
+  schedule that blocks an edge in the passenger hours (L-1) drops trips and looks faster; on the front of §4.6, fewer
+  served trips go with shorter averages, and the balanced pick serves 24 % fewer trips than the best member. No
+  tracker.
+- **L-17 The balanced pick weighs noise-sized differences like real ones.** `_choose_solution_from_pareto` scales
+  each objective to the range on the front, so the condition's range of 0.0027 counts as much as the served trips'
+  2,300; with L-16 this picks a schedule that loses 24 % of the trips (§4.6). No tracker.
 
 ### 2.2 Assumptions
 
@@ -234,7 +243,7 @@ plotly 7 the page stops at the map (`go.Scattermapbox` was removed), see §2.2. 
 |---|---|---|---|---|
 | REQ-1 | Load the CSV files | Loaders run in the simulation check below and in the web app run. | ✅ | - |
 | REQ-2 | Simulate a schedule | `NetworkSimulator` on the repo's data, two schedules (§2.1). | ⚠️ runs; L-1, L-4, L-5 found | - |
-| REQ-3 | NSGA-II over four objectives | `output/pareto_front.csv` and `output/summary.json` from the team's runs, and the run of REQ-6. | ✅ | - |
+| REQ-3 | NSGA-II over four objectives | The run of REQ-6: its Pareto front in three pairwise views, drawn by `pareto_pairs_chart.py` (§4.6). The committed `output/` files are older than the code and data (§5.2). | ✅ 19 schedules on the front; the balanced pick serves 24 % fewer trips than the best member (L-16, L-17). | Pareto front: <img src="maintenance-schedule-optimizer/pareto-pairs.png" width="420"> |
 | REQ-4 | Output files | Same files; the run of REQ-6 wrote all four, `progress.json` included. | ✅ | - |
 | REQ-5 | Map, timeline, objectives | Page opened with the committed `output/summary.json`. | ✅ map with lines and lettered assets, timeline from 2026-01-01, three objective charts, schedule table, raw JSON. The timeline reaches into June although the observation period is 60 days (L-2). | overview: <img src="maintenance-schedule-optimizer/req5-overview.png" width="420"><br>raw JSON: <img src="maintenance-schedule-optimizer/req5-raw-json.png" width="420"> |
 | REQ-6 | Start a run from the web app | "Run Genetic Algorithm" with the defaults (population 24, 10 generations). | ⚠️ the run finishes (rc=0), but the page keeps the old result and "Generation: 0/10" until it is reloaded (L-8). | running: <img src="maintenance-schedule-optimizer/req6-running.png" width="420"><br>finished: <img src="maintenance-schedule-optimizer/req6-finished.png" width="420"><br>after reload: <img src="maintenance-schedule-optimizer/req6-after-reload.png" width="420"> |
@@ -324,6 +333,32 @@ seeds 0–4, and `Weggis_Kai` (edge `W_L_S`) swept over 0–58 h with the other 
 - **Average travel time: plateau plus noise.** It rises only with a window in the passenger hours; on the plateau
   the seed's noise (about 1 %) is larger than any difference between schedules.
 - **Total cost: flat.** 34,480,000 for every schedule (L-4); it never decides between two schedules.
+
+**Pareto front.** The front of the run of REQ-6 (horizon 60, population 24, 10 generations, seed 45: the web app's
+defaults), kept in `maintenance-schedule-optimizer/pareto-front-2026-11-13.csv` and drawn by
+`maintenance-schedule-optimizer/pareto_pairs_chart.py`, which marks the balanced pick as `_choose_solution_from_pareto`
+does.
+
+Why three pairwise views: the front lies in four objectives, of which cost is the same for every schedule, so it is a
+set of points in three dimensions (served trips, condition, travel time). Any single 2D chart is a projection that
+drops one objective, and the points that survive only through the dropped one then look beaten: 9 of 19 in served ×
+travel time, 14 in served × condition, 15 in condition × travel time; in all three objectives none is. The three
+views together show every objective against every other, and the balanced pick, which a served × travel time chart
+cannot explain, is decided in the condition × travel time view. Axes where less is better are inverted, so better is
+always right and top.
+
+<img src="maintenance-schedule-optimizer/pareto-pairs.png" width="420">
+
+- 19 schedules, all with a cost of 34,480,000 and an average condition of 0.9474–0.9501.
+- Served × travel time: two groups, many trips at about 10.5 min and fewer trips at 9.4–10.0 min. Fewer served trips
+  go with a shorter average, because trips lost on blocked edges are not counted (L-16): losing passengers looks like
+  faster travel.
+- Condition × travel time: the balanced pick has the best condition of all 19 (0.95005) and, having lost trips, a
+  short travel time; it is alone at the top right.
+- The balanced pick serves 5126 trips, 24 % fewer than the best member. Its scaled distance to the ideal point is
+  0.746 (gaps: served 0.68, condition 0.00, travel time 0.31), against 0.871 for the next one (6508 trips) and 1.063
+  for the one with the most trips (6705): scaling every objective to [0, 1] gives the condition's range of 0.0027,
+  about the size of the noise, the same weight as 2,300 trips (L-17).
 
 **What follows for the GA.**
 - The optimum of the model is trivial: every window after the passenger hours and as late as possible, i.e.
@@ -491,7 +526,10 @@ with an empty repo.
 
 `output/progress.json`: `{"current_generation": 3, "total_generations": 10}`. `output/best_schedule.csv` has
 `asset_id,start_hour`; `output/pareto_front.csv` has the four objectives and `genes` (a JSON list in asset order).
-The committed `summary.json` has no `generation` field: it predates the field. `served_adjusted` equals
+The committed output files are older than the code and the data, so they are no evidence for REQ-3 (§4.2 uses
+the run of REQ-6 instead): `summary.json` (`54fcbf6`, 2026-01-08) has no `generation` field and twice the trips of
+one day, from before the night flows were dropped (`5c104df`); `pareto_front.csv` (`99dd66b`) has 4 genes and a cost of
+3,780,000, from an older asset list. `served_adjusted` equals
 `served_trips` (the failure penalty is commented out); the web app hides it.
 
 ### 5.3 `ga.py` ↔ `simulation.py` interface
@@ -808,7 +846,7 @@ The hackathon's commits, grouped; messages as they were.
 | `src/frontend.py` | Streamlit app: map, timeline, objectives, schedule table, run button, operator demos. |
 | `data/*_template.csv`, `data/passenger_flows_*.csv`, `data/edge_paths_train.csv` | The scenario (§3). |
 | `data/Datenbank_ÖV_Modell.csv`, `.xlsx`, `data/linie-mit-polygon.csv` | Source data, not read by the code. |
-| `output/summary.json`, `output/pareto_front.csv`, `output/best_schedule.csv` | Results of the team's last runs. |
+| `output/summary.json`, `output/pareto_front.csv`, `output/best_schedule.csv` | Results of early runs on 2026-01-08, older than the code and data (§5.2). |
 | `requirements.txt` | Pins for `simpy`, `pandas`, `numpy`, `deap`, `openpyxl`. |
 | `.gitignore` | `src/__pycache__/*`, `output/best_schedule.csv` (both still tracked). |
 
