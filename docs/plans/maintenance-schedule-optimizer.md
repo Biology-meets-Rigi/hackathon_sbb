@@ -311,6 +311,10 @@ python src/main.py --population 24 --generations 10 --horizon 168
 
 ### 4.4 Optimiser and simulation (REQ-2, REQ-3; DP-1, DP-2)
 
+- NSGA-II is not implemented in the repo: survivor selection (`selNSGA2`, non-dominated sorting and crowding
+  distance), the Pareto archive (`ParetoFront`) and the operators come from DEAP; the generation loop, the parent
+  choice, the fitness evaluation and the pick of the balanced schedule are own code in `NSGA2Optimizer`. DEAP's
+  ready-made loops (`deap.algorithms`) are not used.
 - An individual is a list of start times, one per asset in the order of `assets_template.csv`, bounded to
   `[0, horizon - duration]` (`_bounds_correction`).
 - Each generation: the best `crossover_prob` share of the population (`selBest`, which compares fitness values
