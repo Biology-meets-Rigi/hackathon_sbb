@@ -10,7 +10,8 @@
 > lines passengers use. The team wanted to show that a genetic algorithm, scored by a passenger simulation, can find
 > start times for this work that keep passengers moving, assets in good condition and cost low, and to make the
 > algorithm visible to a jury in a web app. The challenge behind it, the goals and the roadmap are in §1.1, from
-> the team's final presentation.
+> the team's presentation. Project page: [Hack the Tracks](https://eliowanner.ch/projects/hack-the-tracks.html), with the
+> [pitch deck](https://eliowanner.ch/assets/hack-the-tracks-pitch.pptx) of 2026-01-09; the team won first place.
 
 ## 1. Introduction and goals
 
@@ -20,7 +21,16 @@
 
 *The issue's text and the numbered requirements the rest of the plan refers to.*
 
-There is no issue. The challenge and its goals come from the team's presentation "The magic of evolution… and how to adapt it to the transportation world" (2026-11-02, not in the repo):
+There is no issue. The challenge and its goals come from the team's presentation "The magic of evolution… and how to
+adapt it to the transportation world", in two versions:
+
+- the hackathon pitch of 2026-01-09: [pitch deck](https://eliowanner.ch/assets/hack-the-tracks-pitch.pptx) (19 slides), linked from the
+  [project page](https://eliowanner.ch/projects/hack-the-tracks.html);
+- an extended version of 2026-11-02 (22 slides, not public). It has the same slides and adds the challenge text and
+  the challenges and objectives below, the three-objective hypothesis, a slide on how to start such a project, and a
+  screenshot of the demo instead of the "LIVE DEMO" slide (used for NFR-2 in §4.2).
+
+The challenge, from the version of 2026-11-02:
 
 > The future planning of intermodal transport systems is being made more difficult by increasing traffic volumes,
 > quality requirements, and dependencies between different modes of transport. Develop a solution that uses AI to
@@ -37,7 +47,7 @@ There is no issue. The challenge and its goals come from the team's presentation
   - Across modes: "The Rigi cable car and railway are closed due to parallel construction!"
   - In the code: no rule against parallel closures. Only served trips and travel time penalise them, and only on
     day 1 (L-5).
-- **Hypothesis:** every transport system can be reduced to three objectives.
+- **Hypothesis** (version of 2026-11-02 only): every transport system can be reduced to three objectives.
   - High throughput: move people and goods.
   - Low societal costs: external and internal.
   - Good system condition: infrastructure in a stable and reliable state.
@@ -47,6 +57,8 @@ There is no issue. The challenge and its goals come from the team's presentation
   - Discrete and continuous decision variables. The code has continuous start times only.
   - Maintenance affects capacity and condition; use degrades assets (0 in the data); condition affects travel time.
   - Time-dependent behaviour, non-linearities, competing objectives.
+  - Infrastructure, rolling stock and maintenance depend on each other. The code models infrastructure and
+    maintenance; rolling stock is not modelled.
 - **Its answer, a genetic algorithm (§4.4):**
   - first generation, evaluate;
   - drop the worst parents;
@@ -116,6 +128,7 @@ Everything below is left out of the hackathon build. Fixes for the limitations o
 | Score travel time so that lost trips count: e.g. over generated trips, with a penalty for each trip not served. | Found after the hackathon. | Limitations (L-16) | - | - |
 | Pick the balanced schedule on meaningful scales: fixed ranges per objective or weights (with Q-2). | Found after the hackathon. | Limitations (L-17), Q-2 | - | - |
 | Control fitness noise: one seed for all individuals of a generation, served trips as a share of generated trips, or re-evaluation of the front. | Found after the hackathon. | Limitations (L-15) | - | - |
+| Compare a schedule against the status quo, the operators' current plan, as a baseline. | The presentation's main claim needs it; there is no current plan in the data. | §4.2 (claims) | - | - |
 | Synchronise construction across modes explicitly: a rule or objective against closing a line and its alternative at the same time. | The user story of §1.1; the code relies on served trips on day 1. | §1.1, Limitations (L-5) | - | - |
 | Expand from the 5-station network to a full-size network, and measure run time (NFR-5). | The presentation's next step; needs real infrastructure data. | §1.1, NFR-5 | - | - |
 | Add constraints: different average speeds, the capacity of each asset to clear a rail path; discrete decision variables. | The presentation's next steps. | §1.1 | - | - |
@@ -155,7 +168,8 @@ both times.
   `maintenance_duration_half_days / 2` days. No tracker.
 - **L-3 Objective weights do nothing.** `main.py` parses `--weights` and the web app passes its three weight
   sliders, but `NSGA2Optimizer` never reads them: the balanced schedule is the one closest to the ideal point, with
-  equal weights (`_choose_solution_from_pareto`). No tracker.
+  equal weights (`_choose_solution_from_pareto`). The presentation shows "Set priorities" with the weight sliders as
+  a step of the method, so the weights are meant to steer the result (Q-2). No tracker.
 - **L-4 Total cost does not depend on the schedule.** Every asset is maintained exactly once, so `total_cost` is
   the same sum of `maintenance_cost_per_unit * maintenance_duration_half_days` for every individual: in effect
   three objectives. No tracker.
@@ -293,10 +307,19 @@ plotly 7 the page stops at the map (`go.Scattermapbox` was removed), see §2.2. 
 | REQ-6 | Start a run from the web app | "Run Genetic Algorithm" with the defaults (population 24, 10 generations). | ⚠️ the run finishes (rc=0), but the page keeps the old result and "Generation: 0/10" until it is reloaded (L-8). | running: <img src="maintenance-schedule-optimizer/req6-running.png" width="420"><br>finished: <img src="maintenance-schedule-optimizer/req6-finished.png" width="420"><br>after reload: <img src="maintenance-schedule-optimizer/req6-after-reload.png" width="420"> |
 | REQ-7 | Operator demos | Page opened, both demos on random schedules. | ✅ mutation before and after, mating of two parents into a child with `cxTwoPoint`; units and rates differ from the GA (L-10). | mutation: <img src="maintenance-schedule-optimizer/req7-mutation.png" width="420"><br>mating: <img src="maintenance-schedule-optimizer/req7-mating.png" width="420"> |
 | NFR-1 | Demo-ready | The run of REQ-6, timed in the browser. | ✅ 98 s in the sandbox (4–11 s per generation). | - |
-| NFR-2 | Reproducible | By reading the code: all randomness of the CLI is seeded. | ✅ | - |
+| NFR-2 | Reproducible | By reading the code: all randomness of the CLI is seeded. The web app passes no `--seed`, so its runs use 45. The team's demo of 2026-01-09 (a screenshot in the presentation's version of 2026-11-02: defaults, generation 10/10) shows the same schedule and objectives as the run of REQ-6 on 2026-11-13, on another machine with newer library versions. | ✅ reproduced; this says nothing about the quality of the schedule (L-17). | after reload: <img src="maintenance-schedule-optimizer/req6-after-reload.png" width="420"> |
 | NFR-3 | Readable | The hackathon jury (the repo is described as "Winning Team of Hack the Tracks"). | ✅ | - |
 | NFR-4 | Mode-agnostic | By reading the code: the simulation never reads `Edge.mode` (§5.6); only the web app uses it, for colours and bus routes. | ✅ | - |
 | NFR-5 | Scalable | Not measured: 5 stations, 6 edges, 16 assets; a simulation per individual with a Dijkstra search per passenger (§4.4). | - | - |
+
+Claims of the presentation (§1.1), checked against the code and the measurements:
+
+| Claim | Check | Result |
+|---|---|---|
+| "Create a construction site schedule … that improves the initial status" | There is no initial schedule to compare against: the GA starts from random schedules. | Not shown; follow-up in §1.4. |
+| "Positive impact on passengers" | The balanced pick serves 24 % fewer trips than the best schedule on the front (§4.6). | Not shown (L-16, L-17). |
+| "Traceable" | A run reproduces (NFR-2), but the app does not show why a schedule is picked (§4.6). | Partly. |
+| "Respects any mode of transport, multiple instances and environments" | Modes: NFR-4. "Multiple instances and environments" is not defined in the presentation. | Modes ✅, the rest open. |
 
 ### 4.3 Command line run (REQ-1, REQ-3, REQ-4)
 
@@ -786,14 +809,17 @@ The team decides; they are open only if the project goes on after the hackathon.
   `maintenance_duration_half_days` is multiplied by 12 in the simulation and the GA bounds.
 - b) Days everywhere: the simulation converts to hours inside.
 
-*Proposal:* a), the simulation already runs in hours and the flows are per hour.
+*Proposal:* a), the simulation already runs in hours and the flows are per hour. Against it: the presentation thinks
+in days (a scenario with a bridge of "2 Days" and a tunnel of "1 Day", schedules drawn over days D1–D7), which
+argues for b) at least in what users see; the team decides.
 
 💡 **(Q-2) What do the objective weights do? (L-3)**
 - a) Remove the weight sliders and `--weights`; keep the unweighted distance to the ideal point.
 - b) Pass the weights to `_choose_solution_from_pareto` as a weighted distance; the Pareto front stays unweighted
   (DP-1 holds).
 
-*Proposal:* b), the sliders are part of the demo and DP-1 is kept.
+*Proposal:* b), the sliders are part of the demo and DP-1 is kept. The presentation shows "Set priorities" as a step
+of the method, which supports b).
 
 💡 **(Q-3) How does cost become an objective that depends on the schedule? (L-4)**
 - a) Drop `total_cost` as an objective.
