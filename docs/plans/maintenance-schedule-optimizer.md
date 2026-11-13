@@ -42,7 +42,7 @@ There is no issue. The requirements are read from the code and the commit histor
 | ID | Priority | Quality goal | Scenario |
 |---|---|---|---|
 | NFR-1 | 1 | Demo-ready | A run with the web app's defaults (population 24, 10 generations) finishes during a live pitch. Not measured; `ga.py` prints `[BENCHMARK] Generation N completed in … seconds`. |
-| NFR-2 | 2 | Reproducible | The same CLI arguments and `--seed` give the same schedule: random start times come from `random.seed(seed)`, each evaluation from `default_rng(seed + eval_counter)` ("common random numbers"). |
+| NFR-2 | 2 | Reproducible | The same CLI arguments and `--seed` give the same schedule: random start times come from `random.seed(seed)`, each evaluation from `default_rng(seed + eval_counter)`, a different seed per evaluation (not common random numbers, §4.6). |
 | NFR-3 | 3 | Readable for non-experts | A jury member sees on one page where the work happens (map), when (timeline) and what it costs the passengers (objectives). |
 
 ### 1.3 Stakeholders
@@ -73,6 +73,9 @@ Everything below is left out of the hackathon build. Fixes for the limitations o
 | Show progress while a run is going on, and the new result when it ends. | Streamlit blocks during `subprocess.run`. | Limitations (L-8) | - | - |
 | Validate the input CSV files: references between nodes, edges, assets and flows, unique IDs. | Found after the hackathon. | Limitations (L-12) | - | - |
 | Accept `--generations 0`, or reject it in the argument parser. | Found after the hackathon. | Limitations (L-11) | - | - |
+| Let maintenance improve condition: keep condition grades instead of cutting them to 1.0. | Needs a condition scale (with Q-1's units). | Limitations (L-13, L-9) | - | - |
+| Pick parents by Pareto rank and crowding distance (`selTournamentDCD`). | Found after the hackathon. | Limitations (L-14) | - | - |
+| Control fitness noise: one seed for all individuals of a generation, served trips as a share of generated trips, or re-evaluation of the front. | Found after the hackathon. | Limitations (L-15) | - | - |
 | Tests and CI. | Out of the hackathon's time. | §4.2 | - | - |
 | List `streamlit` and `plotly<7` in `requirements.txt`, stop tracking `src/__pycache__/` and `output/best_schedule.csv`. | Out of the hackathon's time. | Assumptions | - | - |
 | Import assets from the raw asset database (`data/Datenbank_ÖV_Modell.*`) and line geometries from `data/linie-mit-polygon.csv`. | The templates were filled by hand. | §12 | - | - |
@@ -131,7 +134,17 @@ both times.
   2026-11-13). The web app allows 1 at least. No tracker.
 - **L-12 The input files are not validated.** The loaders check neither references nor IDs (§5.7): an asset on an
   unknown edge fails only in the first simulation, a flow between unknown stations counts all its trips as failed
-  without an error, and a duplicate ID replaces the earlier row. No tracker.
+  without an error, and a duplicate ID replaces the earlier row: `assets_template.csv` has `Brücke_Luzern_Kü` twice,
+  so the GA sees 16 of its 17 rows (§4.6). No tracker.
+- **L-13 Maintenance lowers the condition of assets of grade 2 and above.** Their `condition_initial` is cut to 1.0
+  and does not fall below it within the horizon; maintenance sets 0.2 during the window and 1.0 after it, from where
+  it degrades. For 12 of the 16 assets the condition objective rewards maintenance as late as possible (§4.6). No
+  tracker.
+- **L-14 Parents are picked by served trips first.** `selBest` sorts by the weighted fitness values
+  lexicographically (`deap.base.Fitness.__lt__`), not by Pareto rank and crowding distance (`selTournamentDCD` is
+  commented out); the other objectives decide only on ties. No tracker.
+- **L-15 Fitness noise is not controlled.** Every evaluation gets its own seed and an individual is never evaluated
+  again, so on the plateau of §4.6 schedules are ranked by their demand draw, and a lucky draw stays. No tracker.
 
 ### 2.2 Assumptions
 
@@ -245,7 +258,8 @@ python src/main.py --population 24 --generations 10 --horizon 168
 
 - An individual is a list of start times, one per asset in the order of `assets_template.csv`, bounded to
   `[0, horizon - duration]` (`_bounds_correction`).
-- Each generation: the best `crossover_prob` share of the population (`selBest`) is cloned, mated pairwise with
+- Each generation: the best `crossover_prob` share of the population (`selBest`, which compares fitness values
+  lexicographically, L-14) is cloned, mated pairwise with
   `cxTwoPoint`, each child mutated with probability `mutation_prob`; `selNSGA2` picks the next population from
   parents and children.
 - `_evaluate` simulates the schedule and returns `(served_trips, avg_condition, avg_travel_time, total_cost)`,
@@ -270,6 +284,58 @@ python src/main.py --population 24 --generations 10 --horizon 168
 - below: "Mutation example" and "Mating example" on random schedules, and the "Raw result JSON".
 
 It falls back to a hard-coded sample result and hard-coded nodes and edges when a file cannot be read.
+
+### 4.6 Optimisation problem, solution space and reward landscape (REQ-2, REQ-3)
+
+*What the GA optimises, the space it searches and how the objectives behave in it, measured on the repo's data.*
+
+**Problem.**
+- Decision variables: one start time `sᵢ` per asset, 16 continuous genes in hours, bounded to `[0, H − dᵢ]` (`H`:
+  horizon, 60 from the web app, 168 from the CLI; `dᵢ`: `maintenance_duration_half_days`, 1–12, read as hours, L-2).
+  Each asset is maintained exactly once, in `[sᵢ, sᵢ + dᵢ)`; no other constraints, out-of-range genes are clamped.
+- Objectives, from one stochastic simulation per evaluation (§5.3): maximise served trips and average condition,
+  minimise average travel time (of served trips) and total cost.
+- Result: the Pareto front and the balanced schedule (§4.4).
+
+**Solution space.** A 16-dimensional box, 48–59 h wide per gene with the web app's horizon. Genes interact only
+through their edge (worst-asset condition, maintenance slowdown): `L_K_Z` has 4 assets, `K_A_Z` and `R_A_Z` 3,
+`W_L_S`, `W_K_B` and `W_R_L` 2 each. `assets_template.csv` has 17 rows, but `Brücke_Luzern_Kü` twice; the loader keeps
+the second row (12 h, 1,000,000 per unit), which the constant cost of 34,480,000 confirms (L-12).
+
+**Reward landscape.** Measured 2026-11-13 with `simulate_schedule`, `H` = 60: one schedule (all assets at 30 h) with
+seeds 0–4, and `Weggis_Kai` (edge `W_L_S`) swept over 0–58 h with the other assets at 40 h, seed 1.
+
+| `Weggis_Kai` start | Served | Avg. condition | Avg. travel time (h) |
+|---|---|---|---|
+| 0 | 3093 | 0.94837 | 0.1857 |
+| 8 | 5241 | 0.94874 | 0.1794 |
+| 12 | 6103 | 0.94890 | 0.1760 |
+| 20 | 6424 | 0.94919 | 0.1760 |
+| 24 and later | 6547, all generated | 0.94932 rising to 0.94980 at 58 | 0.1752 |
+| all at 30, seeds 0–4 | 6547–6722 | 0.94808 for every seed | 0.1752–0.1773 |
+
+- **Served trips: slope, then plateau.** Passengers travel only in hours 0–24 (L-5). A window starting then blocks
+  its edge for the rest of the run (L-1), so the later it starts, the fewer trips are lost; the step at 12 h is the
+  drop from the morning to the afternoon rates. From about 24 h on, every generated trip is served, whatever the
+  schedule; the differences are the seed's demand draw (served = generated, about ±1.3 %).
+- **Average condition: deterministic, smooth, small.** It does not depend on the seed. For the 12 assets of grade 2
+  and above it rises the later the window (L-13); for the 4 of grade 1 a small concave gain peaks with the window
+  ending around mid-horizon. The whole sweep moves it by 0.0015.
+- **Average travel time: plateau plus noise.** It rises only with a window in the passenger hours; on the plateau
+  the seed's noise (about 1 %) is larger than any difference between schedules.
+- **Total cost: flat.** 34,480,000 for every schedule (L-4); it never decides between two schedules.
+
+**What follows for the GA.**
+- The optimum of the model is trivial: every window after the passenger hours and as late as possible, i.e.
+  maintenance postponed to the end of the horizon. This comes from the model (L-5, L-13), not from maintenance
+  planning.
+- On the plateau, served trips and travel time rank schedules by their demand draw: every evaluation has its own
+  seed (`seed + eval_counter`), which is not "common random numbers", and an individual is never evaluated again,
+  so a lucky draw stays (L-15).
+- Parents are chosen by served trips first (L-14), the noisiest objective on the plateau; the condition, the only
+  signal free of noise, decides only on ties.
+- The committed run (horizon 168) has starts from 10 h to 160 h: ten generations of 24 individuals do not converge
+  against this noise in 16 dimensions.
 
 ## 5. Building block view
 
@@ -446,7 +512,7 @@ def simulate_schedule(nodes, edges, assets, flows, schedule, rng, horizon_hours=
 | `nodes`, `edges`, `assets` | The loaded `Node`, `Edge` and `Asset` dicts, the same for every call. | |
 | `flows` | The day's flows (`flows_day`). | L-5, L-6 |
 | `schedule` | `{asset_id: start}`: the genes in the order of `assets_template.csv`, after `_bounds_correction`. | Hours, the web app draws days (L-2). |
-| `rng` | `default_rng(seed + eval_counter)`: a new seed per call ("common random numbers"). | NFR-2 |
+| `rng` | `default_rng(seed + eval_counter)`: a new seed per call. The code calls it "common random numbers", but individuals are scored with different seeds (L-15, §4.6). | NFR-2 |
 | `horizon_hours` | `GAConfig.horizon_hours`. | L-2 |
 | `SimulationResult` | The fitness `(served_trips, avg_condition, avg_travel_time, total_cost)`, weighted `(+1, +1, -1, -1)`; `generated_trips` and `failed_trips` only in the log every 50 calls; `schedule` unused. | `total_cost` is the same for every schedule (L-4). |
 
@@ -606,7 +672,7 @@ Compared with an empty repo; everything is new. What is reused, and what is not 
 
 | ID | New | Defined in |
 |---|---|---|
-| PAT-1 | Simulation-based fitness with common random numbers per evaluation. | §4.4 |
+| PAT-1 | Simulation-based fitness with one seeded random generator per evaluation. | §4.4, §4.6 |
 | PAT-2 | Files in `output/` as the only interface between optimiser and web app, besides the command line that starts a run. | DP-3, §5.2, §5.5 |
 | PAT-3 | A colour per edge, shared by map and timeline (`_hex_color_from_string`). | §4.5 |
 
