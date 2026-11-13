@@ -24,11 +24,12 @@
 There is no issue. The challenge and its goals come from the team's presentation "The magic of evolution… and how to
 adapt it to the transportation world", in two versions:
 
-- the hackathon pitch of 2026-01-09: [pitch deck](https://eliowanner.ch/assets/hack-the-tracks-pitch.pptx) (19 slides), linked from the
-  [project page](https://eliowanner.ch/projects/hack-the-tracks.html);
-- an extended version of 2026-11-02 (22 slides, not public). It has the same slides and adds the challenge text and
-  the challenges and objectives below, the three-objective hypothesis, a slide on how to start such a project, and a
-  screenshot of the demo instead of the "LIVE DEMO" slide (used for NFR-2 in §4.2).
+- the hackathon pitch of 2026-01-09: [pitch deck](https://eliowanner.ch/assets/hack-the-tracks-pitch.pptx) (19 slides),
+  linked from the [project page](https://eliowanner.ch/projects/hack-the-tracks.html). Its "LIVE DEMO" slide has a
+  screenshot of the demo (used for NFR-2 in §4.2); its speaker notes give the reasons for a genetic algorithm (§4);
+- an extended version of 2026-11-02 (22 slides, not public). It has the same slides, without the speaker notes, and
+  adds the challenge text and the challenges and objectives below, the three-objective hypothesis and a slide on how
+  to start such a project.
 
 The challenge, from the version of 2026-11-02:
 
@@ -47,6 +48,9 @@ The challenge, from the version of 2026-11-02:
   - Across modes: "The Rigi cable car and railway are closed due to parallel construction!"
   - In the code: no rule against parallel closures. Only served trips and travel time penalise them, and only on
     day 1 (L-5).
+  - In the code: no maintenance history. The pitch's longer variant asks "Didn't they already replace the switches
+    last year?"; the model has one window per asset within the horizon, and `condition_initial` stands in for the
+    work done before it.
 - **Hypothesis** (version of 2026-11-02 only): every transport system can be reduced to three objectives.
   - High throughput: move people and goods.
   - Low societal costs: external and internal.
@@ -128,6 +132,7 @@ Everything below is left out of the hackathon build. Fixes for the limitations o
 | Score travel time so that lost trips count: e.g. over generated trips, with a penalty for each trip not served. | Found after the hackathon. | Limitations (L-16) | - | - |
 | Pick the balanced schedule on meaningful scales: fixed ranges per objective or weights (with Q-2). | Found after the hackathon. | Limitations (L-17), Q-2 | - | - |
 | Control fitness noise: one seed for all individuals of a generation, served trips as a share of generated trips, or re-evaluation of the front. | Found after the hackathon. | Limitations (L-15) | - | - |
+| Benchmark the GA against a MILP and a greedy rule on the same model, and on the full-size network. | Tests the premise of §4 (§2.2); out of the hackathon's time. | Assumptions, §4 | - | - |
 | Compare a schedule against the status quo, the operators' current plan, as a baseline. | The presentation's main claim needs it; there is no current plan in the data. | §4.2 (claims) | - | - |
 | Synchronise construction across modes explicitly: a rule or objective against closing a line and its alternative at the same time. | The user story of §1.1; the code relies on served trips on day 1. | §1.1, Limitations (L-5) | - | - |
 | Expand from the 5-station network to a full-size network, and measure run time (NFR-5). | The presentation's next step; needs real infrastructure data. | §1.1, NFR-5 | - | - |
@@ -143,7 +148,7 @@ Everything below is left out of the hackathon build. Fixes for the limitations o
 
 | ID | Constraint | Kind | Explanation |
 |---|---|---|---|
-| C-1 | Two hackathon days. | Organisational | Built on 2026-01-08 and 2026-01-09; no tests, small populations and few generations. |
+| C-1 | Two hackathon days, 36 hours (project page). | Organisational | Built on 2026-01-08 and 2026-01-09; no tests, small populations and few generations. |
 | C-2 | Python with `simpy`, `deap`, `pandas`, `numpy`, `openpyxl` (pinned in `requirements.txt`); `streamlit` and `plotly` (below 7) for the web app (not pinned). | Technical | The simulation is a `simpy` process model, the GA uses `deap`'s operators. |
 | C-3 | Network data around the Rigi from public transport data. | Technical | Five stations, six edges (ship, train, cable car, bus), 16 assets; identifiers and some columns in German (`Kai`, `Weiche`, `Zug`, `Schiff`). |
 | C-4 | Bus lines are drawn from the public OSRM demo server (`router.project-osrm.org`). | Technical | Needs internet; on error the web app draws no polyline for that edge. |
@@ -222,6 +227,10 @@ Not checked in code; they hold by construction of the CSV files in `data/` and o
 - `capacity_at_day` is the number of passengers on an edge at the same time (one `simpy.Resource` slot each).
 - Passengers take the fastest route at their start time and do not reroute on the way.
 - Each asset slows its edge down by its own condition; the edge takes the worst asset's condition.
+- Traditional methods (linear and convex optimisation, MILP, rule-based heuristics) cannot handle the problem, so a
+  genetic algorithm is needed (§4, from the pitch's speaker notes). Not tested: on the model as built, the rule "every
+  window after the passenger hours, as late as possible" reaches the optimum of §4.6; a full-size network with the
+  presentation's constraints may differ.
 - One run at a time: `main.py` and `ga.py` write fixed paths under `output/`, `ga.py` relative to the working
   directory (the web app sets `cwd` to the repo root).
 - The web app runs where `streamlit` and `plotly` below 7 are installed (not in `requirements.txt`; plotly 7
@@ -251,6 +260,19 @@ skeleton `f3163c2`, so §3 has no current data model; the as-built model is in �
 ## 4. Solution strategy
 
 *The fundamental choices and why, the rules the design follows, how it is verified, and the design of each part.*
+
+Why a genetic algorithm, from the pitch deck's speaker notes: "Until now there is no «traditional» algorithmic
+approach which is capable of handling the complexity of the presented challenge, due to calculation needs and
+restrictions." (spelling corrected)
+
+| Traditional method | Why it reaches its limits (speaker notes) |
+|---|---|
+| Linear and convex optimisation | Loss of realism and decision relevance. |
+| Exact methods (MILP, branch and bound) | Combinatorial explosion. |
+| Rule-based or greedy heuristics | Highly dependent on the rule set and the initial assumptions. |
+
+This is the premise of the design, not a measured result (§2.2): on the model as built, the optimum is simple
+(§4.6), and no other method was run for comparison.
 
 | Quality goal | Scenario | Solution approach | Details |
 |---|---|---|---|
@@ -307,7 +329,7 @@ plotly 7 the page stops at the map (`go.Scattermapbox` was removed), see §2.2. 
 | REQ-6 | Start a run from the web app | "Run Genetic Algorithm" with the defaults (population 24, 10 generations). | ⚠️ the run finishes (rc=0), but the page keeps the old result and "Generation: 0/10" until it is reloaded (L-8). | running: <img src="maintenance-schedule-optimizer/req6-running.png" width="420"><br>finished: <img src="maintenance-schedule-optimizer/req6-finished.png" width="420"><br>after reload: <img src="maintenance-schedule-optimizer/req6-after-reload.png" width="420"> |
 | REQ-7 | Operator demos | Page opened, both demos on random schedules. | ✅ mutation before and after, mating of two parents into a child with `cxTwoPoint`; units and rates differ from the GA (L-10). | mutation: <img src="maintenance-schedule-optimizer/req7-mutation.png" width="420"><br>mating: <img src="maintenance-schedule-optimizer/req7-mating.png" width="420"> |
 | NFR-1 | Demo-ready | The run of REQ-6, timed in the browser. | ✅ 98 s in the sandbox (4–11 s per generation). | - |
-| NFR-2 | Reproducible | By reading the code: all randomness of the CLI is seeded. The web app passes no `--seed`, so its runs use 45. The team's demo of 2026-01-09 (a screenshot in the presentation's version of 2026-11-02: defaults, generation 10/10) shows the same schedule and objectives as the run of REQ-6 on 2026-11-13, on another machine with newer library versions. | ✅ reproduced; this says nothing about the quality of the schedule (L-17). | after reload: <img src="maintenance-schedule-optimizer/req6-after-reload.png" width="420"> |
+| NFR-2 | Reproducible | By reading the code: all randomness of the CLI is seeded. The web app passes no `--seed`, so its runs use 45. The team's demo of 2026-01-09 (the screenshot on the pitch deck's "LIVE DEMO" slide: defaults, generation 10/10) shows the same schedule and objectives as the run of REQ-6 on 2026-11-13, on another machine with newer library versions. | ✅ reproduced; this says nothing about the quality of the schedule (L-17). | after reload: <img src="maintenance-schedule-optimizer/req6-after-reload.png" width="420"> |
 | NFR-3 | Readable | The hackathon jury (the repo is described as "Winning Team of Hack the Tracks"). | ✅ | - |
 | NFR-4 | Mode-agnostic | By reading the code: the simulation never reads `Edge.mode` (§5.6); only the web app uses it, for colours and bus routes. | ✅ | - |
 | NFR-5 | Scalable | Not measured: 5 stations, 6 edges, 16 assets; a simulation per individual with a Dijkstra search per passenger (§4.4). | - | - |
@@ -849,6 +871,7 @@ Read from the commit history; the decisions were taken at the hackathon without 
 
 | Date | Decision | Why | Consequences |
 |---|---|---|---|
+| 2026-01-08 | ✅ A genetic algorithm instead of linear or convex optimisation, MILP or rule-based heuristics (`f3163c2`). | From the pitch's speaker notes: loss of realism, combinatorial explosion, dependence on rules and initial assumptions (§4). | No optimality guarantee and no comparison with another method (§2.2, §1.4); noise in the fitness (L-15). |
 | 2026-01-08 | ✅ True multi-objective NSGA-II instead of a weighted sum in the fitness (`99dd66b`). | Weights hide trade-offs; the Pareto front shows them. | DP-1; the weights lost their effect (L-3, Q-2). |
 | 2026-01-08 | ✅ The web app reads `output/summary.json` and starts `main.py` as a subprocess (PR #2, `a02595a`). | Optimiser and web app were built in parallel by different people. | DP-3; progress is not live (L-8). |
 | 2026-01-08 | ✅ Day flows only (`5c104df`). | Simpler model for the demo. | L-6. |
