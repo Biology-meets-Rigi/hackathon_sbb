@@ -3,7 +3,8 @@
 > **Status:** plan of 2026-11-13, built by 2026-01-09. Describes `main` `550c032` as it is. Initial skeleton
 > `f3163c2` ("Initial", 2026-01-08); everything after it was built at the hackathon "Hack the Tracks" on 2026-01-08
 > and 2026-01-09 (PRs [#1](https://github.com/Biology-meets-Rigi/hackathon_sbb/pull/1)–[#4](https://github.com/Biology-meets-Rigi/hackathon_sbb/pull/4),
-> all merged). No issue. Open questions: §9.1.
+> all merged). No issue. This plan: branch `docs/maintenance-schedule-optimizer-plan`, PR
+> [#5](https://github.com/Biology-meets-Rigi/hackathon_sbb/pull/5). Open questions: §9.1.
 >
 > **Why:** maintenance on quays, switches, tunnels, a bridge and a cable car around the Rigi closes or slows the
 > lines passengers use. The team wanted to show that a genetic algorithm, scored by a passenger simulation, can find
